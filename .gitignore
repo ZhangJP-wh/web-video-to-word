@@ -1,0 +1,10 @@
+.venv/
+work/
+outputs/
+__pycache__/
+*.pyc
+.DS_Store
+.env
+.env.*
+*cookie*
+*.log
