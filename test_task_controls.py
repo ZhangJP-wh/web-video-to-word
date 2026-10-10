@@ -15,7 +15,7 @@ class TaskControlTests(unittest.TestCase):
         output=root/'output';output.mkdir()
         path=output/'测试.docx';doc=Document();doc.add_paragraph('https://example.com/test');doc.add_paragraph('正文');doc.save(path)
         meta={'name':'测试','url':'https://example.com/test','document':str(path)}
-        (folder/'job.json').write_text(json.dumps(meta))
+        (folder/'job.json').write_text(json.dumps(meta), encoding="utf-8")
         (folder/'media').mkdir();(folder/'media/video.mp4').write_bytes(b'test')
         return folder,output,path
 
@@ -30,7 +30,7 @@ class TaskControlTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);folder,output,path=self.setup_files(root)
             partial=path.with_suffix('.partial.docx');partial.write_bytes(b'incomplete zip')
-            (folder/'export-target.json').write_text(json.dumps({'url':'https://example.com/test','path':str(path)}))
+            (folder/'export-target.json').write_text(json.dumps({'url':'https://example.com/test','path':str(path)}), encoding="utf-8")
             trash=self.run_delete(root,output)
             self.assertFalse(folder.exists());self.assertFalse(path.exists());self.assertFalse(partial.exists())
             self.assertTrue((trash/'123456abcdef/media/video.mp4').exists())
@@ -39,7 +39,7 @@ class TaskControlTests(unittest.TestCase):
     def test_preserves_unrelated_document_with_same_title(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);folder,output,path=self.setup_files(root)
-            meta=json.loads((folder/'job.json').read_text());meta.pop('document');(folder/'job.json').write_text(json.dumps(meta))
+            meta=json.loads((folder/'job.json').read_text(encoding="utf-8"));meta.pop('document');(folder/'job.json').write_text(json.dumps(meta), encoding="utf-8")
             doc=Document();doc.add_paragraph('https://other.example/video');doc.save(path)
             self.run_delete(root,output);self.assertTrue(path.exists())
 
@@ -47,7 +47,7 @@ class TaskControlTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);folder,output,path=self.setup_files(root)
             outside=root/'private.docx';shutil.copy2(path,outside)
-            meta=json.loads((folder/'job.json').read_text());meta['document']=str(outside);(folder/'job.json').write_text(json.dumps(meta))
+            meta=json.loads((folder/'job.json').read_text(encoding="utf-8"));meta['document']=str(outside);(folder/'job.json').write_text(json.dumps(meta), encoding="utf-8")
             with patch('task_controls.reader_pids',return_value=[]),patch('send2trash.send2trash'),self.assertRaises(ValueError):
                 task_controls.trash_task(root,root/'work',[output],'123456abcdef')
             self.assertTrue(outside.exists());self.assertTrue(folder.exists())

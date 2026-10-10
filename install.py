@@ -11,9 +11,10 @@ import sys
 import time
 import urllib.request
 from pathlib import Path
+from runtime_compat import venv_python
 
 ROOT = Path(__file__).resolve().parent
-TESTS = ['test_reader', 'test_app', 'test_qianwen', 'test_task_controls', 'test_install']
+TESTS = ['test_reader', 'test_app', 'test_qianwen', 'test_task_controls', 'test_install', 'test_runtime_compat']
 
 
 def run(args, **kwargs):
@@ -22,22 +23,26 @@ def run(args, **kwargs):
 
 
 def check_environment():
-    if platform.system() != 'Darwin' or platform.machine() != 'arm64':
-        raise RuntimeError('仅支持原生 macOS arm64；请退出 Rosetta 终端再重试。')
+    system, machine = platform.system(), platform.machine().lower()
+    if not ((system == 'Darwin' and machine == 'arm64') or (system == 'Windows' and machine in ('amd64', 'x86_64'))):
+        raise RuntimeError('支持原生 Apple Silicon Mac 或 Windows 10/11 x64；不支持 Rosetta、Intel Mac、Windows ARM/32位和 Linux。')
+    if system == 'Windows' and sys.getwindowsversion().build < 17763:
+        raise RuntimeError('需要 Windows 10 1809 或更新版本。')
     if sys.version_info[:2] != (3, 12):
-        raise RuntimeError('需要 Python 3.12。请运行 bash install.sh 自动检查环境。')
+        raise RuntimeError('需要 Python 3.12。请运行系统对应的安装入口。')
     node = shutil.which('node')
     if not node:
-        raise RuntimeError('缺少 Node.js。请运行 bash install.sh。')
+        raise RuntimeError('缺少 Node.js。请运行系统对应的安装入口。')
     info = json.loads(subprocess.check_output(
         [node, '-p', 'JSON.stringify({version:process.versions.node,arch:process.arch})'], text=True))
-    if int(info['version'].split('.')[0]) < 22 or info['arch'] != 'arm64':
-        raise RuntimeError('需要原生 arm64 Node.js 22+。请运行 bash install.sh。')
+    expected_arch = 'x64' if system == 'Windows' else 'arm64'
+    if int(info['version'].split('.')[0]) < 22 or info['arch'] != expected_arch:
+        raise RuntimeError('需要与系统架构一致的 Node.js 22+。请运行对应系统的安装入口。')
 
 
 def ensure_venv():
     folder = ROOT / '.venv'
-    python = folder / 'bin/python'
+    python = venv_python(ROOT)
     if folder.is_symlink():
         raise RuntimeError('.venv 是符号链接，请先人工核查其目标；安装器不会修改。')
     healthy = False
@@ -45,7 +50,7 @@ def ensure_venv():
         try:
             info = json.loads(subprocess.check_output([str(python), '-c',
                 'import sys,platform,json;print(json.dumps([list(sys.version_info[:2]),platform.machine(),sys.prefix,sys.base_prefix]))'], text=True, timeout=10))
-            healthy = info[0] == [3, 12] and info[1] == 'arm64' and Path(info[2]).resolve() == folder.resolve() and info[2] != info[3]
+            healthy = info[0] == [3, 12] and info[1].lower() == platform.machine().lower() and Path(info[2]).resolve() == folder.resolve() and info[2] != info[3]
         except (OSError, ValueError, subprocess.SubprocessError):
             pass
     if not healthy:
@@ -90,7 +95,8 @@ def start_service(python, port):
     work.mkdir(exist_ok=True)
     with (work / 'app.log').open('ab') as log:
         child = subprocess.Popen([str(python), str(ROOT / 'app.py')], cwd=ROOT, env=env,
-            stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
+            stdin=subprocess.DEVNULL, stdout=log, stderr=log,
+            **({'creationflags': subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == 'nt' else {'start_new_session': True}))
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
         if child.poll() is not None:
@@ -131,9 +137,9 @@ def main(argv=None):
         for key in ('PIP_CERT', 'SSL_CERT_FILE', 'NODE_EXTRA_CA_CERTS'):
             os.environ.setdefault(key, '/etc/ssl/cert.pem')
     if args.start_only:
-        python = ROOT / '.venv/bin/python'
+        python = venv_python(ROOT)
         if not python.exists():
-            raise RuntimeError('请先运行 bash install.sh 完成安装。')
+            raise RuntimeError('请先运行系统对应的安装入口完成安装。')
     else:
         python = ensure_venv()
         run([python, '-m', 'ensurepip', '--upgrade'])
@@ -148,7 +154,10 @@ def main(argv=None):
         url = f'http://127.0.0.1:{args.port}/'
         print(f'工具地址：{url}\n请点击网页“登录或打开千问”，由本人完成账号登录/验证码。健康检查不代表已登录或云端转写成功。')
         if args.open:
-            run(['/usr/bin/open', url])
+            if os.name == 'nt':
+                os.startfile(url)
+            else:
+                run(['/usr/bin/open', url])
     else:
         print('安装和本机验收完成。运行 bash install.sh --start-only 启动。')
 
@@ -157,4 +166,4 @@ if __name__ == '__main__':
     try:
         main()
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
-        raise SystemExit(f'未完成：{error}\n修复上述问题后重新运行 bash install.sh；不要提交 work、日志或登录资料。')
+        raise SystemExit(f'未完成：{error}\n修复上述问题后重新运行系统对应的安装入口；不要提交 work、日志或登录资料。')

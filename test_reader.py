@@ -50,7 +50,7 @@ class PipelineTests(unittest.TestCase):
         raw={'model':'qianwen-web','segments':[{'start':0,'end':1,'speaker':'发言人 1','text':'完整识别文字 80%。'}]}
         with patch('qianwen_browser.export_audio',return_value=raw), patch.object(reader,'ffmpeg',return_value='/unused'):
             reader.prepare(argparse.Namespace(url=meta['url'],cookies_browser=None,engine='qianwen'))
-        saved = json.loads((job / 'job.json').read_text())
+        saved = json.loads((job / 'job.json').read_text(encoding="utf-8"))
         self.assertEqual(saved['state'], 'completed')
         doc = Document(saved['document'])
         texts = [p.text for p in doc.paragraphs]
@@ -77,11 +77,11 @@ class PipelineTests(unittest.TestCase):
             a.setnchannels(1);a.setsampwidth(2);a.setframerate(16000);a.writeframes(b'\0'*32000)
         with patch.object(app,'WORK',self.work),patch.object(app,'enqueue',side_effect=lambda url: __import__('hashlib').sha256(url.encode()).hexdigest()[:12]):
             ident=app.receive_upload(io.BytesIO(original.read_bytes()),original.stat().st_size,original.name)
-        job=self.work/'jobs'/ident;meta=json.loads((job/'job.json').read_text())
+        job=self.work/'jobs'/ident;meta=json.loads((job/'job.json').read_text(encoding="utf-8"))
         raw={'model':'qianwen-web','segments':[{'start':0,'end':1,'speaker':'发言人 1','text':'本地文件全部原文'}]}
         with patch('qianwen_browser.export_audio',return_value=raw),patch.object(reader,'ffmpeg',return_value='/unused'),patch.object(reader,'extract_audio',side_effect=lambda ff,src,dst:shutil.copy2(src,dst)):
             reader.prepare(argparse.Namespace(url=meta['url'],cookies_browser=None,engine='qianwen'))
-        saved=json.loads((job/'job.json').read_text());texts=[p.text for p in Document(saved['document']).paragraphs]
+        saved=json.loads((job/'job.json').read_text(encoding="utf-8"));texts=[p.text for p in Document(saved['document']).paragraphs]
         self.assertEqual(saved['state'],'completed')
         self.assertEqual(texts[0],'本地上传文件：我的录音.wav')
         self.assertEqual(Path(saved['document']).name,'我的录音.docx')
@@ -114,7 +114,7 @@ class PipelineTests(unittest.TestCase):
         path = reader.build_document(job, raw)
         audio.write_bytes(b'retained')
         path.write_bytes(path.read_bytes() + b'changed')
-        meta = json.loads((job / 'job.json').read_text())
+        meta = json.loads((job / 'job.json').read_text(encoding="utf-8"))
         with self.assertRaises(ValueError):
             reader.clear_intermediate(job, meta)
         self.assertTrue(audio.exists())

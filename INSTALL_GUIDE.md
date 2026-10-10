@@ -1,35 +1,44 @@
 # 网页视频转语音识别文字稿（由千问提供支持）
 
-粘贴视频网页链接，工具在 Mac 后台下载音轨，上传到已登录的千问音视频速读，导出完整原文并生成 Word。仅使用千问云端识别，不安装或使用本地语音模型。
+## 先安装：电脑小白从这里开始
 
-## 使用流程
+你不需要学编程。最省事的方式是把仓库链接交给**自己电脑上能操作终端和文件的 AI Agent**，让它完成安装；普通聊天窗口只有文字回复，不能代替你操作电脑。
 
-1. 首次安装后，双击“配置千问登录.command”，在专用窗口登录千问，返回终端按回车。
-2. 双击“启动工具.command”，打开终端给出的本机网页地址。公开安装版默认为 http://127.0.0.1:8767/。
-3. 可点击或拖拽本地音视频文件到上传入口（每次一个，最大6GB），或粘贴 YouTube、哔哩哔哩等视频页面链接，点击橙色“开始生成文稿”。任务添加成功后链接框自动清空，可继续粘贴下一条；提交失败时保留链接。链接输入框关闭浏览器历史自动填充。
-4. 稍后回来查看文稿，或点击“打开文档所在位置”。任务记录最新的排在最上面。
+| 你的电脑 | 安装入口 | 验证状态 |
+| --- | --- | --- |
+| Apple 芯片 Mac（M1/M2/M3/M4 等） | 首次安装.command / bash install.sh | 已在现有 Mac 实测安装和启动 |
+| Windows 10 1809+ / Windows 11，64位 x64（常见 Intel/AMD PC） | install-windows.cmd / install-windows.ps1 | 新增兼容入口；验证结果见下方，尚未在全新实体 Windows 电脑实测 |
+| Intel Mac、Windows ARM/32位、WSL/Linux | 暂无 | 暂不支持自动安装 |
 
-本地文件与链接共用橙色“开始生成文稿”按钮，选择文件会清空链接，输入链接会取消文件选择。上传仅复制文件，完成后清理工具副本，不删除用户原文件。千问登录、原文、发言人和时间戳设置沿用现有流程。每份 Word 第一行保留原视频网页链接（本地上传则注明来源文件名），按视频标题或本地文件名命名，包含全部识别原文、时间戳和发言人信息。显著提示：
+### 方法一：把这一段复制给你电脑上的 Agent（推荐）
 
-> 本文稿内容为语音模型识别结果，需要注意：可能有错别字和识别不准确之处。
+> 请把 https://github.com/ZhangJP-wh/web-video-to-word 安装到我的电脑固定目录。先读 README 和安装源码，确认系统支持。Mac 运行 `bash install.sh --open`；Windows x64 运行 `powershell -NoProfile -File .\install-windows.ps1 -Open`。自动安装缺失环境、依赖和 Chromium，运行全部测试和 pip check，启动服务并检查 /health。系统授权/密码及千问登录/验证码让我本人处理。不关闭系统安全、脚本策略或 TLS 校验，不读取日常浏览器 Cookie，不安装本地 ASR，不上传私人资料。失败时按指南修复后重跑；Windows 脚本策略阻止时改用文档的手动 Python 兜底。
 
-所有文稿直接保存在 `~/Downloads/网页视频转语音识别文字稿（由千问提供支持）/`，不建立任务二级文件夹。完成文档结构和内容完整性检查后，原下载媒体移入废纸篓，临时音轨清理。程序检查不代表人工确认识别准确率。本工具不生成总结。
+**你要做的只有：**把这段话交给 Agent，等待下载和验收，按需确认系统安装授权，最后本人登录千问。Windows 环境齐全时可以接近一键完成；缺环境时使用 WinGet 安装，安装许可和必要的系统授权仍可能需要本人确认。
 
-## 登录与删除
+### 方法二：没有 Agent，自己点几下
 
-页面上有标题旁蓝色“登录或打开千问”按钮。识别任务检测到登录失效后显示需要重新登录；点击按钮登录、关闭登录窗口，再点击重试。空闲时不保证实时发现过期，也不会主动抢占屏幕。 首次使用会提示可能未登录；上传或确认上传失败时，在保留具体错误的同时提示可能未登录，建议点击“登录或打开千问”确认后重试。明确的存储或额度限制仍显示原原因，不误报为登录失效。
+1. 点击本页面上方绿色 **Code → Download ZIP**。
+2. 下载后“解压缩/全部提取”到一个固定目录，例如 Windows 的 `C:\VideoToWord`，或 Mac 的用户文件夹。不要在压缩包内运行，不要放到受保护的系统目录，安装后不要移动目录。
+3. **Mac：**双击 `首次安装.command`。**Windows：**双击 `install-windows.cmd`。保持网络连通，等待依赖、浏览器和测试完成。首次耗时取决于网速，没有固定分钟数。
+4. 看到“服务启动及 /health 检查通过”并打开本机网页，即本机安装验收完成。默认地址为 **http://127.0.0.1:8767/**。该地址只在安装工具的这台电脑上使用。
+5. 在网页标题旁点击蓝色 **“登录或打开千问”**，在专用窗口中本人登录，处理验证码，完成后关闭登录窗口。Agent 不需要你的密码或 Cookie。
+6. 选择一个你有权处理的短音视频文件，或粘贴视频链接，点击橙色 **“开始生成文稿”**。Word 保存到用户“下载”文件夹中的“网页视频转语音识别文字稿（由千问提供支持）”。
+7. 下次使用：Mac 双击 `启动工具.command`；Windows 双击 `start-windows.cmd`。重启电脑后要重新启动工具；Windows 当前不自动设置开机启动。
 
-已完成任务的“删除任务并同步到千问”与“查看 Word 文稿”“打开文档所在位置”同排，不再提供重复下载按钮。每条任务的“删除任务并同步到千问”会停止该任务，将相关本机文件、已完成和未完成 Word、任务记录移入废纸篓；点击“删除任务并同步到千问”会删除对应千问记录，云端删除后无法恢复。删除结果逐项列出工具任务记录、本机文稿及任务文件、对应千问记录，每项成功显示绿色、失败显示红色；千问记录未找到而按成功处理时显示绿色并注明情况。绿色成功提示在卡片消失后显示3秒自动清空；红色失败提示保留；失败原因保留在任务卡片并随刷新显示。成功删除后任务卡片立即从工具列表消失，旧的刷新结果不会把卡片重新显示。云端删除失败则保留本机任务和文稿，提示原因后可重试；未上传的任务只清理本机。仅删除含本工具任务编号且唯一匹配的记录，千问未找到对应记录时仍清理本机，整体按成功处理，并明确注明未找到、未执行云端删除；多个匹配记录或页面/登录异常仍视为失败。模型和登录信息不会上传 GitHub。
+### Windows：缺环境、被阻止或安装失败怎么办
 
-## 新电脑安装
+- **缺 Python/Node：**入口自动检测 Python 3.12 x64 和 Node.js 22+ x64；使用已有 WinGet 从明确的 `winget` 来源安装 `Python.Python.3.12`（当前用户）与 `OpenJS.NodeJS.LTS`。不安装本地语音模型。授权提示或安装许可由本人处理。
+- **没有 WinGet：**到 [Python 3.12.10 官方页面](https://www.python.org/downloads/release/python-31210/) 下载 **Windows installer (64-bit)**，安装时勾选“Add python.exe to PATH”；到 [Node.js 官方页面](https://nodejs.org/en/download) 安装 **22+ LTS Windows x64**。重新打开终端，再重跑安装入口。
+- **提示不允许运行 PowerShell 脚本：**不要运行 `Set-ExecutionPolicy`、`-ExecutionPolicy Bypass` 或关闭安全软件。环境安装好后，在项目文件夹地址栏输入 `cmd` 回车，在命令提示符粘贴 `py -3.12 -X utf8 install.py --open`，直接走 Python 兜底。如果 `py` 不存在，改用已安装 Python 3.12 的完整路径。公司电脑的策略限制需由本人联系管理员。
+- **WinGet 安装成功但仍提示找不到环境：**关闭终端，重新打开后重跑入口；脚本也会刷新常见 PATH。
+- **端口已占用：**Agent 可用 `powershell -NoProfile -File .\install-windows.ps1 -Port 8768 -Open`，以后使用 `start-windows.cmd -Port 8768`。入口不强制停止其他软件。
+- **下载失败：**先恢复网络，再重跑入口。完整报错在终端；服务日志 `work/app.log` 仅在本机查看，不公开上传。
+- **不要双击 Mac 的 .command 文件：**Windows 使用上面的 .cmd / .ps1 或 Python 入口。无需 WSL、Git Bash 或开发者模式。
 
-优先支持原生 Apple Silicon Mac、Python 3.12、arm64 Node.js 22+。Windows、Intel Mac 和 Rosetta 终端不支持本安装入口。首次下载需要网络；尚未在另一台全新 Mac 完成从零安装实测。
+### Mac：环境缺失和手动兜底
 
-### 交给 AI Agent（推荐）
-
-复制以下整段给具备本机终端/文件权限的 AI Agent：
-
-> 请帮我安装 https://github.com/ZhangJP-wh/web-video-to-word 到固定的本机目录。先阅读 README.md、INSTALL_GUIDE.md 和安装源码，再运行 `bash install.sh --open`。完成环境、依赖、Chromium、全部测试、pip check、服务启动和 /health 验收；确认 project 是安装目录且 engines 仅为 qianwen。环境缺失时按安装器提示从官方来源安装。系统密码/授权、千问登录和验证码交给我本人操作。不要关闭系统安全或 TLS 校验，不读取日常浏览器 Cookie，不安装本地 ASR，不上传凭据、日志、任务或文稿。失败时保留具体错误，修复后重跑入口。
+优先支持原生 Apple Silicon Mac、Python 3.12、arm64 Node.js 22+。Intel Mac 和 Rosetta 终端不支持 Mac 安装入口；Windows 使用上面的独立入口。首次下载需要网络；尚未在另一台全新 Mac 完成从零安装实测。
 
 ### 自己安装
 
@@ -58,6 +67,37 @@ bash install.sh --start-only --open  # 启动已安装工具并验证；不重�
 安装失败保留终端具体报错；网络下载中断后重跑入口。服务失败时仅在本机查看 `work/app.log`，不要公开上传可能包含任务信息的日志。损坏 venv 的备份可在确认新环境正常后由本人清理。不要删除 `work`，其中有任务和千问专用登录资料。
 
 更新前先停止当前服务（自动启动版本先运行“停用自动启动.command”），备份自己的 work 资料，再更新源码并重跑安装器；需要时重新启用自动启动。朋友电脑不会因 GitHub 更新自动升级。其他副本占用端口时，安装器拒绝复用，不强制关闭。
+
+### 什么算安装完成，什么仍要本人操作
+
+安装器自动检查系统与版本，创建或修复 venv，安装 requirements 和 Playwright Chromium，真实启动一次无登录浏览器，运行全部测试与 pip check，后台启动服务并验证 `/health` 的安装目录及仅 qianwen 引擎。任何一步失败都会停止，不会假报成功。
+
+千问登录/验证码、系统授权，以及 Windows 安装包可能要求的许可确认仍由本人处理。健康检查不代表千问已登录，也不代表一次真实云端转写成功。文件锁、进程管理、FFmpeg 和“打开文档所在位置”已增加 Windows 兼容；自动启动的 launchd 命令仍只适用于 Mac。
+
+
+## 工具说明
+
+
+粘贴视频网页链接，工具在 Mac 后台下载音轨，上传到已登录的千问音视频速读，导出完整原文并生成 Word。仅使用千问云端识别，不安装或使用本地语音模型。
+
+## 使用流程
+
+1. 首次安装后，双击“配置千问登录.command”，在专用窗口登录千问，返回终端按回车。
+2. 双击“启动工具.command”，打开终端给出的本机网页地址。公开安装版默认为 http://127.0.0.1:8767/。
+3. 可点击或拖拽本地音视频文件到上传入口（每次一个，最大6GB），或粘贴 YouTube、哔哩哔哩等视频页面链接，点击橙色“开始生成文稿”。任务添加成功后链接框自动清空，可继续粘贴下一条；提交失败时保留链接。链接输入框关闭浏览器历史自动填充。
+4. 稍后回来查看文稿，或点击“打开文档所在位置”。任务记录最新的排在最上面。
+
+本地文件与链接共用橙色“开始生成文稿”按钮，选择文件会清空链接，输入链接会取消文件选择。上传仅复制文件，完成后清理工具副本，不删除用户原文件。千问登录、原文、发言人和时间戳设置沿用现有流程。每份 Word 第一行保留原视频网页链接（本地上传则注明来源文件名），按视频标题或本地文件名命名，包含全部识别原文、时间戳和发言人信息。显著提示：
+
+> 本文稿内容为语音模型识别结果，需要注意：可能有错别字和识别不准确之处。
+
+所有文稿直接保存在 `~/Downloads/网页视频转语音识别文字稿（由千问提供支持）/`，不建立任务二级文件夹。完成文档结构和内容完整性检查后，原下载媒体移入废纸篓，临时音轨清理。程序检查不代表人工确认识别准确率。本工具不生成总结。
+
+## 登录与删除
+
+页面上有标题旁蓝色“登录或打开千问”按钮。识别任务检测到登录失效后显示需要重新登录；点击按钮登录、关闭登录窗口，再点击重试。空闲时不保证实时发现过期，也不会主动抢占屏幕。 首次使用会提示可能未登录；上传或确认上传失败时，在保留具体错误的同时提示可能未登录，建议点击“登录或打开千问”确认后重试。明确的存储或额度限制仍显示原原因，不误报为登录失效。
+
+已完成任务的“删除任务并同步到千问”与“查看 Word 文稿”“打开文档所在位置”同排，不再提供重复下载按钮。每条任务的“删除任务并同步到千问”会停止该任务，将相关本机文件、已完成和未完成 Word、任务记录移入废纸篓；点击“删除任务并同步到千问”会删除对应千问记录，云端删除后无法恢复。删除结果逐项列出工具任务记录、本机文稿及任务文件、对应千问记录，每项成功显示绿色、失败显示红色；千问记录未找到而按成功处理时显示绿色并注明情况。绿色成功提示在卡片消失后显示3秒自动清空；红色失败提示保留；失败原因保留在任务卡片并随刷新显示。成功删除后任务卡片立即从工具列表消失，旧的刷新结果不会把卡片重新显示。云端删除失败则保留本机任务和文稿，提示原因后可重试；未上传的任务只清理本机。仅删除含本工具任务编号且唯一匹配的记录，千问未找到对应记录时仍清理本机，整体按成功处理，并明确注明未找到、未执行云端删除；多个匹配记录或页面/登录异常仍视为失败。模型和登录信息不会上传 GitHub。
 
 后台启动识别进程失败会显示具体失败原因，不会一直停在排队状态；个别任务记录异常不会停止后续队列。
 
@@ -95,11 +135,11 @@ bash install.sh --start-only --open  # 启动已安装工具并验证；不重�
 
 ## 安装验收与验证范围
 
-安装入口运行 `test_reader test_app test_qianwen test_task_controls test_install` 全部测试及 pip check。安装器回归覆盖错误架构/Node版本、损坏环境保留与修复、符号链接保护、依赖失败中止、错误服务身份拒绝和正确服务复用。千问单元测试使用模拟结果，不调用用户账号。
+安装入口运行 `test_reader test_app test_qianwen test_task_controls test_install test_runtime_compat` 全部测试及 pip check。安装器回归覆盖错误架构/Node版本、损坏环境保留与修复、符号链接保护、依赖失败中止、错误服务身份拒绝和正确服务复用。千问单元测试使用模拟结果，不调用用户账号。
 
 需要验证云端完整流程时，由用户提供获授权的短音频，本人登录后检查千问原文、Word、来源链接、提示、发言人、时间戳及媒体清理。此项涉及用户内容，不属于安装器自动测试。不得把任务记录、个人文稿、音视频、work、.venv、Cookie 或缓存提交仓库。
 
-本次具体验证结果见 `验证记录.json`。另一台全新 Mac、官方安装包授权和 Homebrew 缺环境安装分支仍需要独立实测，不能承诺所有新电脑无人干预安装。
+本次具体验证结果见 `验证记录.json`。另一台全新 Mac、全新实体 Windows 电脑、官方安装包授权、WinGet 和 Homebrew 缺环境安装分支仍需要独立实测，不能承诺所有新电脑无人干预安装。
 
 ## 主要文件
 
@@ -145,6 +185,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, unquote
 
+from runtime_compat import venv_python
 from reader import ROOT, WORK, OUTPUT, LEGACY_OUTPUT, NOTICE, save_json, download_url
 
 HOST = '127.0.0.1'
@@ -160,7 +201,7 @@ active_readers = {}
 
 def document_path(ident):
     job = WORK / 'jobs' / ident
-    meta = json.loads((job / 'job.json').read_text())
+    meta = json.loads((job / 'job.json').read_text(encoding="utf-8"))
     path = Path(meta.get('document', '/nonexistent')).resolve()
     migrated = OUTPUT / path.name
     if path.parent in (OUTPUT.parent / '网页视频转语音文稿', OUTPUT.parent / '网页视频转语音识别文字稿') and migrated.is_file():
@@ -193,6 +234,9 @@ def preview_document(ident):
 
 def reveal_document(ident):
     path = document_path(ident)
+    if os.name == 'nt':
+        os.startfile(str(path.parent))
+        return
     result = subprocess.run(['/usr/bin/open', '-a', 'Finder', str(path.parent)],
                             capture_output=True, text=True, timeout=15)
     if result.returncode:
@@ -204,7 +248,7 @@ def fetch_title(ident, url):
     """Resolve metadata independently of the sequential transcription queue."""
     try:
         result = subprocess.run(
-            [str(ROOT / '.venv/bin/python'), '-m', 'yt_dlp', '--skip-download',
+            [str(venv_python(ROOT)), '-m', 'yt_dlp', '--skip-download',
              '--no-playlist', '--ignore-no-formats-error', '--no-warnings',
              '--socket-timeout', '8', '--retries', '0', '--print', 'title', download_url(url)],
             capture_output=True, text=True, timeout=40)
@@ -213,7 +257,7 @@ def fetch_title(ident, url):
             return
         with mutex:
             path = WORK / 'jobs' / ident / 'job.json'
-            meta = json.loads(path.read_text())
+            meta = json.loads(path.read_text(encoding="utf-8"))
             # Active reader owns job.json. Separate metadata avoids competing writes.
             save_json(path.parent / 'page-title.json', {'title': title, 'url': url})
     except (OSError, ValueError, subprocess.SubprocessError):
@@ -246,13 +290,13 @@ def list_jobs():
     items = []
     for path in (WORK / 'jobs').glob('*/job.json'):
         try:
-            item = json.loads(path.read_text())
+            item = json.loads(path.read_text(encoding="utf-8"))
             item['id'] = path.parent.name
             deletion=path.parent/'delete-result.json'
-            if deletion.exists():item['deletion_result']=json.loads(deletion.read_text())
+            if deletion.exists():item['deletion_result']=json.loads(deletion.read_text(encoding="utf-8"))
             title_path = path.parent / 'page-title.json'
             if not item.get('title') and title_path.exists():
-                item['title'] = json.loads(title_path.read_text()).get('title')
+                item['title'] = json.loads(title_path.read_text(encoding="utf-8")).get('title')
             item['created_at'] = item.get('created_at', task_created_at(path.parent))
             item['has_document'] = bool(item.get('document') and Path(item['document']).is_file())
             items.append(item)
@@ -267,7 +311,7 @@ def worker():
         log=None
         try:
             folder = WORK / 'jobs' / ident
-            import fcntl
+            from runtime_compat import file_lock as fcntl
             if (ident,generation) in cancelled or not folder.exists():continue
             with (folder / '.prepare.lock').open('a') as lock:
                 while True:
@@ -280,8 +324,8 @@ def worker():
             with mutex:
                 if (ident,generation) in cancelled or not folder.exists() or (folder/'.deleting').exists():continue
                 log=(folder/'run.log').open('ab')
-                process=subprocess.Popen([str(ROOT/'.venv/bin/python'),str(ROOT/'reader.py'),
-                     'prepare',url,'--engine',json.loads((folder/'job.json').read_text()).get('engine','qianwen')],
+                process=subprocess.Popen([str(venv_python(ROOT)),str(ROOT/'reader.py'),
+                     'prepare',url,'--engine',json.loads((folder/'job.json').read_text(encoding="utf-8")).get('engine','qianwen')],
                      stdout=log,stderr=log,start_new_session=True)
                 active_readers[ident]=(process,generation)
             result=process.wait();log.close()
@@ -290,7 +334,7 @@ def worker():
             record=WORK/'jobs'/ident/'job.json'
             if record.exists() and (ident,generation) not in cancelled:
                 try:
-                    meta=json.loads(record.read_text())
+                    meta=json.loads(record.read_text(encoding="utf-8"))
                     meta.update(state='failed',error='后台任务未能启动或任务记录异常：'+str(error))
                     save_json(record,meta)
                 except (OSError,ValueError):pass
@@ -330,7 +374,7 @@ def delete_task(ident):
             # Also stop readers recovered after a web-service restart.
             from task_controls import reader_pids
             for pid in reader_pids(ROOT,folder):stop_reader(pid)
-            import fcntl
+            from runtime_compat import file_lock as fcntl
             with (folder/'.prepare.lock').open('a') as lock:
                 deadline=time.monotonic()+15
                 while True:
@@ -338,16 +382,16 @@ def delete_task(ident):
                     except BlockingIOError:
                         if time.monotonic()>deadline:raise ValueError('任务尚未停止，请稍后重试删除')
                         time.sleep(.2)
-                result=subprocess.run([str(ROOT/'.venv/bin/python'),str(ROOT/'qianwen_browser.py'),'delete','--job',ident],capture_output=True,text=True,timeout=120)
+                result=subprocess.run([str(venv_python(ROOT)),str(ROOT/'qianwen_browser.py'),'delete','--job',ident],capture_output=True,text=True,timeout=120)
                 if result.returncode:raise ValueError('千问同步删除失败，本机任务和文稿已保留：'+(result.stderr.strip().splitlines()[-1] if result.stderr.strip() else '后台浏览器未能完成删除'))
         except Exception as error:
             (folder/'.deleting').unlink(missing_ok=True)
-            meta=json.loads((folder/'job.json').read_text())
+            meta=json.loads((folder/'job.json').read_text(encoding="utf-8"))
             if meta.get('state') not in ('completed','failed','login_required'):
                 meta.update(state='failed',error='任务已停止，千问同步删除未完成：'+str(error))
                 save_json(folder/'job.json',meta)
             raise
-        cloud_meta=json.loads((folder/'job.json').read_text())
+        cloud_meta=json.loads((folder/'job.json').read_text(encoding="utf-8"))
         cloud_status=cloud_meta.get('qianwen_delete_result','deleted' if cloud_meta.get('qianwen_cloud_deleted') else 'failed')
         result=trash_task(ROOT,WORK,[OUTPUT,LEGACY_OUTPUT,ROOT/'outputs',OUTPUT.parent/'网页视频转语音文稿'],ident)
         pending.discard(ident);generations.pop(ident,None)
@@ -358,7 +402,7 @@ def delete_task(ident):
 
 def login_status():
     path=WORK/'qianwen-auth.json'
-    state=json.loads(path.read_text()) if path.exists() else {'status':'unknown'}
+    state=json.loads(path.read_text(encoding="utf-8")) if path.exists() else {'status':'unknown'}
     if not state.get('last_success'):
         successes=[item.get('added_at',0) for item in list_jobs() if item.get('state')=='completed' and item.get('model')=='qianwen-web']
         if successes:state['last_success']=max(successes)
@@ -372,12 +416,12 @@ def open_login():
     with mutex:
         if login_process and login_process.poll() is None:return {'ok':True,'message':'登录窗口已经打开。'}
         lock=WORK/'qianwen-browser.lock'
-        import fcntl
+        from runtime_compat import file_lock as fcntl
         with lock.open('a') as handle:
             try:fcntl.flock(handle,fcntl.LOCK_EX|fcntl.LOCK_NB)
             except BlockingIOError:raise ValueError('千问浏览器正在处理任务，请稍后再登录。')
         with (WORK/'qianwen-login.log').open('ab') as log:
-            login_process=subprocess.Popen([str(ROOT/'.venv/bin/python'),str(ROOT/'qianwen_browser.py'),'login-ui'],
+            login_process=subprocess.Popen([str(venv_python(ROOT)),str(ROOT/'qianwen_browser.py'),'login-ui'],
                                            stdin=subprocess.DEVNULL,stdout=log,stderr=log,start_new_session=True)
     return {'ok':True,'message':'正在打开千问登录窗口；登录完成后关闭该窗口即可。'}
 
@@ -395,10 +439,10 @@ def enqueue(url, engine="qianwen"):
     with mutex:
         if ident in pending:
             return ident
-        meta = json.loads((folder / 'job.json').read_text()) if (folder / 'job.json').exists() else {}
+        meta = json.loads((folder / 'job.json').read_text(encoding="utf-8")) if (folder / 'job.json').exists() else {}
         if meta.get('state') == 'completed' and Path(meta.get('document', '/nonexistent')).is_file():
             return ident
-        import fcntl
+        from runtime_compat import file_lock as fcntl
         with (folder / '.prepare.lock').open('a') as lock:
             try:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -517,7 +561,7 @@ class Handler(BaseHTTPRequestHandler):
                     result=delete_task(ident)
                 except (ValueError,OSError,subprocess.SubprocessError) as error:
                     folder=WORK/'jobs'/ident
-                    meta=json.loads((folder/'job.json').read_text()) if (folder/'job.json').exists() else {}
+                    meta=json.loads((folder/'job.json').read_text(encoding="utf-8")) if (folder/'job.json').exists() else {}
                     cloud_status=meta.get('qianwen_delete_result','deleted' if meta.get('qianwen_cloud_deleted') else 'failed')
                     report=deletion_report(False,cloud_status,str(error))
                     if folder.exists():save_json(folder/'delete-result.json',report)
@@ -709,6 +753,81 @@ refresh();setInterval(refresh,6000);
 </script></html>
 ```
 
+### FILE: install-windows.cmd
+```text
+@echo off
+cd /d "%~dp0"
+powershell.exe -NoProfile -File "%~dp0install-windows.ps1" -Open %*
+set "install_result=%errorlevel%"
+if not "%install_result%"=="0" echo Installation failed. See README: Windows manual fallback. Do not disable security or execution policy.
+pause
+exit /b %install_result%
+```
+
+### FILE: install-windows.ps1
+```text
+﻿# Windows PowerShell 5.1+. Never changes execution policy or disables security.
+param([switch]$NoStart, [switch]$StartOnly, [switch]$Open, [int]$Port = 8767)
+$ErrorActionPreference = 'Stop'
+$env:PYTHONUTF8 = '1'
+Set-Location -LiteralPath $PSScriptRoot
+function Refresh-Path {
+    $env:Path = [Environment]::GetEnvironmentVariable('Path', 'User') + ';' + [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + $env:Path
+}
+function Find-Python {
+    $candidates = @("$env:LOCALAPPDATA\Programs\Python\Python312\python.exe", "$env:ProgramFiles\Python312\python.exe")
+    $launcher = Get-Command py.exe -ErrorAction SilentlyContinue
+    if ($launcher) {
+        $found = $null
+        try { $found = & $launcher.Source -3.12 -c 'import sys; print(sys.executable)' 2>$null } catch { $found = $null }
+        if ($LASTEXITCODE -eq 0 -and $found) { $candidates = @($found) + $candidates }
+    }
+    $command = Get-Command python.exe -ErrorAction SilentlyContinue
+    if ($command -and $command.Source -notlike '*WindowsApps*') { $candidates += $command.Source }
+    foreach ($candidate in $candidates) {
+        if (Test-Path -LiteralPath $candidate) {
+            & $candidate -c 'import sys,platform; sys.exit(not (sys.version_info[:2]==(3,12) and platform.machine().lower() in (''amd64'',''x86_64'')))' 2>$null
+            if ($LASTEXITCODE -eq 0) { return $candidate }
+        }
+    }
+    return $null
+}
+function Test-Node {
+    $node = Get-Command node.exe -ErrorAction SilentlyContinue
+    if (-not $node) { return $false }
+    & $node.Source -e 'process.exit(process.arch === ''x64'' && Number(process.versions.node.split(''.'')[0]) >= 22 ? 0 : 1)'
+    return ($LASTEXITCODE -eq 0)
+}
+function Install-Package([string]$Id, [string[]]$ExtraArgs) {
+    if (-not (Get-Command winget.exe -ErrorAction SilentlyContinue)) {
+        throw '缺少 WinGet。下一步：按 README 手动安装官方 Python 3.12 64位和 Node.js LTS x64，然后重跑入口。'
+    }
+    & winget.exe install --id $Id --exact --source winget --architecture x64 --accept-source-agreements --accept-package-agreements @ExtraArgs
+    if ($LASTEXITCODE -ne 0) { throw "WinGet 安装 $Id 未完成。请按上方错误处理或使用 README 官方安装包，再重跑；系统授权由本人完成。" }
+    Refresh-Path
+}
+try {
+    if ([Environment]::OSVersion.Platform -ne 'Win32NT' -or [Environment]::OSVersion.Version.Build -lt 17763 -or $env:PROCESSOR_ARCHITECTURE -ne 'AMD64') {
+        throw '需要 Windows 10 1809/Windows 11 x64 和64位 PowerShell。Windows ARM、32位和 WSL 尚不支持。'
+    }
+    Refresh-Path
+    $python = Find-Python
+    if (-not $python) { Install-Package 'Python.Python.3.12' @('--scope', 'user'); $python = Find-Python }
+    if (-not $python) { throw '下一步：重新打开终端后重跑入口；仍失败时安装 README 中的 Python 3.12 64位官方包。' }
+    if (-not (Test-Node)) { Install-Package 'OpenJS.NodeJS.LTS' @() }
+    if (-not (Test-Node)) { throw '下一步：重新打开终端再重跑；仍失败时安装 Node.js 22+ LTS x64 官方包。' }
+    $installArgs = @('install.py', '--port', "$Port")
+    if ($NoStart) { $installArgs += '--no-start' }
+    if ($StartOnly) { $installArgs += '--start-only' }
+    if ($Open) { $installArgs += '--open' }
+    & $python @installArgs
+    exit $LASTEXITCODE
+} catch {
+    Write-Host "未完成：$_" -ForegroundColor Red
+    exit 1
+}
+```
+
 ### FILE: install.py
 ```text
 #!/usr/bin/env python3
@@ -724,9 +843,10 @@ import sys
 import time
 import urllib.request
 from pathlib import Path
+from runtime_compat import venv_python
 
 ROOT = Path(__file__).resolve().parent
-TESTS = ['test_reader', 'test_app', 'test_qianwen', 'test_task_controls', 'test_install']
+TESTS = ['test_reader', 'test_app', 'test_qianwen', 'test_task_controls', 'test_install', 'test_runtime_compat']
 
 
 def run(args, **kwargs):
@@ -735,22 +855,26 @@ def run(args, **kwargs):
 
 
 def check_environment():
-    if platform.system() != 'Darwin' or platform.machine() != 'arm64':
-        raise RuntimeError('仅支持原生 macOS arm64；请退出 Rosetta 终端再重试。')
+    system, machine = platform.system(), platform.machine().lower()
+    if not ((system == 'Darwin' and machine == 'arm64') or (system == 'Windows' and machine in ('amd64', 'x86_64'))):
+        raise RuntimeError('支持原生 Apple Silicon Mac 或 Windows 10/11 x64；不支持 Rosetta、Intel Mac、Windows ARM/32位和 Linux。')
+    if system == 'Windows' and sys.getwindowsversion().build < 17763:
+        raise RuntimeError('需要 Windows 10 1809 或更新版本。')
     if sys.version_info[:2] != (3, 12):
-        raise RuntimeError('需要 Python 3.12。请运行 bash install.sh 自动检查环境。')
+        raise RuntimeError('需要 Python 3.12。请运行系统对应的安装入口。')
     node = shutil.which('node')
     if not node:
-        raise RuntimeError('缺少 Node.js。请运行 bash install.sh。')
+        raise RuntimeError('缺少 Node.js。请运行系统对应的安装入口。')
     info = json.loads(subprocess.check_output(
         [node, '-p', 'JSON.stringify({version:process.versions.node,arch:process.arch})'], text=True))
-    if int(info['version'].split('.')[0]) < 22 or info['arch'] != 'arm64':
-        raise RuntimeError('需要原生 arm64 Node.js 22+。请运行 bash install.sh。')
+    expected_arch = 'x64' if system == 'Windows' else 'arm64'
+    if int(info['version'].split('.')[0]) < 22 or info['arch'] != expected_arch:
+        raise RuntimeError('需要与系统架构一致的 Node.js 22+。请运行对应系统的安装入口。')
 
 
 def ensure_venv():
     folder = ROOT / '.venv'
-    python = folder / 'bin/python'
+    python = venv_python(ROOT)
     if folder.is_symlink():
         raise RuntimeError('.venv 是符号链接，请先人工核查其目标；安装器不会修改。')
     healthy = False
@@ -758,7 +882,7 @@ def ensure_venv():
         try:
             info = json.loads(subprocess.check_output([str(python), '-c',
                 'import sys,platform,json;print(json.dumps([list(sys.version_info[:2]),platform.machine(),sys.prefix,sys.base_prefix]))'], text=True, timeout=10))
-            healthy = info[0] == [3, 12] and info[1] == 'arm64' and Path(info[2]).resolve() == folder.resolve() and info[2] != info[3]
+            healthy = info[0] == [3, 12] and info[1].lower() == platform.machine().lower() and Path(info[2]).resolve() == folder.resolve() and info[2] != info[3]
         except (OSError, ValueError, subprocess.SubprocessError):
             pass
     if not healthy:
@@ -803,7 +927,8 @@ def start_service(python, port):
     work.mkdir(exist_ok=True)
     with (work / 'app.log').open('ab') as log:
         child = subprocess.Popen([str(python), str(ROOT / 'app.py')], cwd=ROOT, env=env,
-            stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
+            stdin=subprocess.DEVNULL, stdout=log, stderr=log,
+            **({'creationflags': subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == 'nt' else {'start_new_session': True}))
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
         if child.poll() is not None:
@@ -844,9 +969,9 @@ def main(argv=None):
         for key in ('PIP_CERT', 'SSL_CERT_FILE', 'NODE_EXTRA_CA_CERTS'):
             os.environ.setdefault(key, '/etc/ssl/cert.pem')
     if args.start_only:
-        python = ROOT / '.venv/bin/python'
+        python = venv_python(ROOT)
         if not python.exists():
-            raise RuntimeError('请先运行 bash install.sh 完成安装。')
+            raise RuntimeError('请先运行系统对应的安装入口完成安装。')
     else:
         python = ensure_venv()
         run([python, '-m', 'ensurepip', '--upgrade'])
@@ -861,7 +986,10 @@ def main(argv=None):
         url = f'http://127.0.0.1:{args.port}/'
         print(f'工具地址：{url}\n请点击网页“登录或打开千问”，由本人完成账号登录/验证码。健康检查不代表已登录或云端转写成功。')
         if args.open:
-            run(['/usr/bin/open', url])
+            if os.name == 'nt':
+                os.startfile(url)
+            else:
+                run(['/usr/bin/open', url])
     else:
         print('安装和本机验收完成。运行 bash install.sh --start-only 启动。')
 
@@ -870,7 +998,7 @@ if __name__ == '__main__':
     try:
         main()
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
-        raise SystemExit(f'未完成：{error}\n修复上述问题后重新运行 bash install.sh；不要提交 work、日志或登录资料。')
+        raise SystemExit(f'未完成：{error}\n修复上述问题后重新运行系统对应的安装入口；不要提交 work、日志或登录资料。')
 ```
 
 ### FILE: install.sh
@@ -1107,7 +1235,7 @@ def upload_failure_message(state, message):
 def auth_state(status):
     from reader import save_json
     path=ROOT/'work/qianwen-auth.json'
-    previous=__import__('json').loads(path.read_text()) if path.exists() else {}
+    previous=__import__('json').loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     previous.update(status=status,checked_at=time.time())
     if status=='valid':previous['last_success']=time.time()
     save_json(path,previous)
@@ -1140,7 +1268,7 @@ def require_cloud_available(page):
 
 @contextmanager
 def browser_context(playwright, headed=False):
-    import fcntl
+    from runtime_compat import file_lock as fcntl
     PROFILE.mkdir(parents=True, exist_ok=True)
     with (ROOT/'work/qianwen-browser.lock').open('a') as lock:
         try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
@@ -1176,7 +1304,7 @@ def export_panel(page,job):
     except AssertionError as error:
         from playwright.sync_api import TimeoutError
         page.screenshot(path=str(job/'browser-diagnostic.png'),full_page=True)
-        (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
+        (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text(), encoding="utf-8")
         raise TimeoutError('千问导出选项尚未加载完整，已保留任务和媒体') from error
     return panel,checks
 
@@ -1194,11 +1322,11 @@ def confirm_submission(page,title,job,meta,save,timeout=120000):
             return
         except BrowserTimeout:
             body=page.locator('body').inner_text()
-            (job/'browser-diagnostic.txt').write_text(body)
+            (job/'browser-diagnostic.txt').write_text(body, encoding="utf-8")
             events=job/'upload-events.txt'
-            previous=events.read_text() if events.exists() else ''
+            previous=events.read_text(encoding="utf-8") if events.exists() else ''
             if not previous.endswith(body+'\n'):
-                events.write_text((previous+'\n'+str(time.time())+'\n'+body+'\n')[-64000:])
+                events.write_text((previous+'\n'+str(time.time())+'\n'+body+'\n')[-64000:], encoding="utf-8")
             if '存储已满' in body and '删除不用的记录' in body:
                 meta.update(qianwen_submission_attempted=False,qianwen_submitted=False,qianwen_upload_confirmed=False)
                 save(job/'job.json',meta)
@@ -1224,7 +1352,7 @@ def export_audio(audio, job, meta, save):
             meta['state']='cloud_connecting';save(job/'job.json',meta)
             page.goto(meta.get('qianwen_url') or URL)
             page.screenshot(path=str(job/'browser-diagnostic.png'), full_page=True)
-            (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
+            (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text(), encoding="utf-8")
             require_login_if_visible(page)
             if not meta.get('qianwen_url'):
                 try:
@@ -1242,14 +1370,14 @@ def export_audio(audio, job, meta, save):
                         page.get_by_role('button', name=re.compile('点击或将')).click()
                     chooser.value.set_files(str(upload))
                     page.screenshot(path=str(job/'upload-selected.png'),full_page=True)
-                    (job/'upload-selected.txt').write_text(page.locator('body').inner_text())
+                    (job/'upload-selected.txt').write_text(page.locator('body').inner_text(), encoding="utf-8")
                     from playwright.sync_api import expect
                     expect(page.get_by_role('button',name='确 认',exact=True)).to_be_enabled(timeout=120000)
                     meta['qianwen_upload_title']=upload.stem
                     meta['qianwen_submission_attempted']=True;save(job/'job.json',meta)
                     page.get_by_role('button', name='确 认', exact=True).click()
                     page.screenshot(path=str(job/'upload-confirmed.png'),full_page=True)
-                    (job/'upload-confirmed.txt').write_text(page.locator('body').inner_text())
+                    (job/'upload-confirmed.txt').write_text(page.locator('body').inner_text(), encoding="utf-8")
                     require_login_if_visible(page)
                 title = upload.stem
                 confirm_submission(page,title,job,meta,save)
@@ -1266,7 +1394,7 @@ def export_audio(audio, job, meta, save):
                         page.get_by_role('button', name='导出', exact=True).wait_for(timeout=10000)
                     except BrowserTimeout:
                         page.screenshot(path=str(job/'browser-diagnostic.png'),full_page=True)
-                        (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
+                        (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text(), encoding="utf-8")
                         meta['last_browser_check']=time.time();save(job/'job.json',meta)
                         time.sleep(5)
                         continue
@@ -1277,7 +1405,7 @@ def export_audio(audio, job, meta, save):
             meta['state']='cloud_exporting';save(job/'job.json',meta)
             page.get_by_role('button', name='导出', exact=True).wait_for(timeout=60000)
             page.screenshot(path=str(job/'browser-diagnostic.png'), full_page=True)
-            (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
+            (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text(), encoding="utf-8")
             require_cloud_available(page)
             page.get_by_role('button', name='导出', exact=True).click()
             panel,checks=export_panel(page,job)
@@ -1334,7 +1462,7 @@ def delete_cloud(job):
     import json
     from reader import save_json
     from playwright.sync_api import sync_playwright
-    meta=json.loads((job/'job.json').read_text())
+    meta=json.loads((job/'job.json').read_text(encoding="utf-8"))
     if meta.get('qianwen_cloud_deleted') or meta.get('qianwen_delete_resolved'):return
     if not any(meta.get(key) for key in ('qianwen_submitted','qianwen_submission_attempted','qianwen_url','qianwen_upload_confirmed')):
         meta.update(qianwen_delete_resolved=True,qianwen_delete_result='not_uploaded');save_json(job/'job.json',meta);return
@@ -1386,6 +1514,7 @@ import unicodedata
 import wave
 import time
 from pathlib import Path
+from runtime_compat import IS_WINDOWS
 
 ROOT = Path(__file__).resolve().parent
 WORK = ROOT / 'work'
@@ -1406,6 +1535,8 @@ def filename(title):
     # macOS filenames have a byte limit, rather than a character limit.
     while len(title.encode('utf-8')) > 190:
         title = title[:-1]
+    if re.fullmatch(r'(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?', title, re.I):
+        title = '_' + title
     return title or '未命名音视频'
 
 
@@ -1413,9 +1544,12 @@ def ffmpeg():
     import imageio_ffmpeg
     folder = WORK / 'bin'
     folder.mkdir(parents=True, exist_ok=True)
-    target = folder / 'ffmpeg'
+    target = folder / ('ffmpeg.exe' if IS_WINDOWS else 'ffmpeg')
     if not target.exists():
-        target.symlink_to(imageio_ffmpeg.get_ffmpeg_exe())
+        if IS_WINDOWS:
+            __import__('shutil').copy2(imageio_ffmpeg.get_ffmpeg_exe(), target)
+        else:
+            target.symlink_to(imageio_ffmpeg.get_ffmpeg_exe())
     os.environ['PATH'] = str(folder) + os.pathsep + os.environ.get('PATH', '')
     return str(target)
 
@@ -1429,7 +1563,7 @@ def load_job(job):
     path = Path(job).resolve()
     if path.parent != (WORK / 'jobs').resolve() or not path.is_dir():
         raise ValueError('任务必须位于本项目 work/jobs 下')
-    return path, json.loads((path / 'job.json').read_text())
+    return path, json.loads((path / 'job.json').read_text(encoding="utf-8"))
 
 
 def make_blocks(segments, limit=2200):
@@ -1468,7 +1602,7 @@ def prepare(args):
         raise ValueError('请输入 HTTP 或 HTTPS 网页链接')
     try:
         os.nice(10)
-    except PermissionError:
+    except (PermissionError, AttributeError):
         print('当前执行环境不允许调整进程优先级，继续单任务处理。', flush=True)
     ff = ffmpeg()
     ident = hashlib.sha256(args.url.encode()).hexdigest()[:12]
@@ -1476,12 +1610,12 @@ def prepare(args):
     job.mkdir(parents=True, exist_ok=True)
     lock = job / '.prepare.lock'
     # OS file locks release automatically after an interrupted process.
-    import fcntl
-    with lock.open('w') as handle:
+    from runtime_compat import file_lock as fcntl
+    with lock.open('a') as handle:
         fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
         meta = {'url': args.url, 'state': 'downloading'}
         if (job / 'job.json').exists():
-            meta = json.loads((job / 'job.json').read_text())
+            meta = json.loads((job / 'job.json').read_text(encoding="utf-8"))
             if meta.get('state') == 'completed' and Path(meta.get('document', '/nonexistent')).is_file():
                 print(f'已有任务，无需重复处理：{job}', flush=True)
                 return
@@ -1543,7 +1677,7 @@ def prepare(args):
             save_json(job / 'job.json', meta)
             os.environ.setdefault('SSL_CERT_FILE', '/etc/ssl/cert.pem')
             raw_path = job / 'raw-transcript.json'
-            raw = json.loads(raw_path.read_text()) if raw_path.exists() else {}
+            raw = json.loads(raw_path.read_text(encoding="utf-8")) if raw_path.exists() else {}
             if raw.get('model') != 'qianwen-web':
                 from qianwen_browser import export_with_retry
                 raw = export_with_retry(wav, job, meta, save_json)
@@ -1604,11 +1738,11 @@ def verify_document(path, meta, blocks):
 
 def clear_intermediate(job, meta):
     import shutil
-    report = json.loads((job / 'validation.json').read_text())
+    report = json.loads((job / 'validation.json').read_text(encoding="utf-8"))
     path = Path(meta['document'])
     if hashlib.sha256(path.read_bytes()).hexdigest() != report['document_sha256']:
         raise ValueError('Word 已改动，拒绝清理原媒体')
-    raw = json.loads((job / 'raw-transcript.json').read_text())
+    raw = json.loads((job / 'raw-transcript.json').read_text(encoding="utf-8"))
     verify_document(path, meta, make_blocks(raw['segments']))
     for key in ('media', 'audio'):
         if not meta.get(key):
@@ -1640,6 +1774,8 @@ def clear_intermediate(job, meta):
 
 def configure_folder_sort(folder):
     """Persist Finder list-view settings for this output folder only."""
+    if IS_WINDOWS:
+        return
     from ds_store import DSStore
     settings = folder / '.DS_Store'
     with DSStore.open(str(settings), 'r+' if settings.exists() and settings.stat().st_size else 'w+') as store:
@@ -1662,7 +1798,7 @@ def build_document(job, raw=None):
     from docx.enum.text import WD_COLOR_INDEX
     from docx.oxml.ns import qn
     job, meta = load_job(job)
-    raw = raw if raw is not None else json.loads((job / 'raw-transcript.json').read_text())
+    raw = raw if raw is not None else json.loads((job / 'raw-transcript.json').read_text(encoding="utf-8"))
     blocks = make_blocks(raw.get('segments', []))
     if not blocks:
         raise ValueError('识别结果为空，保留媒体，不生成 Word')
@@ -1745,6 +1881,47 @@ send2trash
 ds-store
 playwright
 certifi
+
+portalocker>=3,<4; sys_platform == "win32"
+psutil>=6,<8; sys_platform == "win32"
+```
+
+### FILE: runtime_compat.py
+```text
+"""Small platform boundary for Windows x64 and native Apple Silicon Mac."""
+import os
+from pathlib import Path
+
+IS_WINDOWS = os.name == "nt"
+
+
+def venv_python(root):
+    return Path(root) / '.venv' / ('Scripts/python.exe' if IS_WINDOWS else 'bin/python')
+
+
+class FileLock:
+    LOCK_EX, LOCK_NB, LOCK_UN = 1, 2, 4
+
+    @staticmethod
+    def flock(handle, flags):
+        import portalocker
+        if flags & FileLock.LOCK_UN:
+            portalocker.unlock(handle)
+            return
+        mode = portalocker.LOCK_EX
+        if flags & FileLock.LOCK_NB:
+            mode |= portalocker.LOCK_NB
+        try:
+            portalocker.lock(handle, mode)
+        except portalocker.exceptions.LockException as error:
+            raise BlockingIOError('文件正在被其他进程使用') from error
+
+
+# Preserve existing Mac flock behavior and interoperability with running versions.
+if IS_WINDOWS:
+    file_lock = FileLock
+else:
+    import fcntl as file_lock
 ```
 
 ### FILE: smoke_qianwen.py
@@ -1831,6 +2008,16 @@ while time.monotonic()<end:
     time.sleep(1)
 ```
 
+### FILE: start-windows.cmd
+```text
+@echo off
+cd /d "%~dp0"
+powershell.exe -NoProfile -File "%~dp0install-windows.ps1" -StartOnly -Open %*
+set "install_result=%errorlevel%"
+if not "%install_result%"=="0" pause
+exit /b %install_result%
+```
+
 ### FILE: task_controls.py
 ```text
 """Stop one verified reader and move its local artifacts to the Trash."""
@@ -1845,6 +2032,17 @@ from pathlib import Path
 
 
 def reader_pids(root, folder):
+    if os.name == 'nt':
+        import psutil
+        verified = []
+        for process in psutil.process_iter(['pid', 'cmdline']):
+            try:
+                args = process.info['cmdline'] or []
+                if len(args) >= 4 and Path(args[1]).resolve() == (root/'reader.py').resolve() and args[2] == 'prepare' and args[3] == json.loads((folder/'job.json').read_text(encoding='utf-8'))['url']:
+                    verified.append(process.pid)
+            except (psutil.NoSuchProcess, psutil.AccessDenied, OSError, ValueError):
+                continue
+        return verified
     result=subprocess.run(['/usr/sbin/lsof','-t',str(folder/'.prepare.lock')],capture_output=True,text=True)
     verified=[]
     for value in result.stdout.split():
@@ -1856,6 +2054,19 @@ def reader_pids(root, folder):
 
 
 def stop_reader(pid):
+    if os.name == 'nt':
+        import psutil
+        try:
+            parent = psutil.Process(pid)
+            children = parent.children(recursive=True)
+            for process in reversed(children):
+                try: process.terminate()
+                except psutil.NoSuchProcess: pass
+            parent.terminate()
+            psutil.wait_procs(children + [parent], timeout=10)
+        except psutil.NoSuchProcess:
+            pass
+        return
     children=subprocess.run(['/usr/bin/pgrep','-P',str(pid)],capture_output=True,text=True)
     for child in children.stdout.split():stop_reader(int(child))
     try:os.kill(pid,signal.SIGTERM)
@@ -1865,11 +2076,11 @@ def stop_reader(pid):
 def trash_task(root, work, output_roots, ident):
     from send2trash import send2trash
     from docx import Document
-    import fcntl
+    from runtime_compat import file_lock as fcntl
     if not re.fullmatch('[0-9a-f]{12}',ident):raise ValueError('任务编号不合法')
     folder=work/'jobs'/ident
     if folder.is_symlink() or not folder.exists():raise ValueError('任务不存在')
-    meta=json.loads((folder/'job.json').read_text())
+    meta=json.loads((folder/'job.json').read_text(encoding="utf-8"))
     (folder/'.deleting').touch()
     for pid in reader_pids(root,folder):stop_reader(pid)
     # Do not remove files until the reader has actually relinquished ownership.
@@ -1882,12 +2093,12 @@ def trash_task(root, work, output_roots, ident):
                     (folder/'.deleting').unlink(missing_ok=True)
                     raise ValueError('任务尚未停止，未删除文件。请稍后重试。')
                 time.sleep(.2)
-        meta=json.loads((folder/'job.json').read_text())
+        meta=json.loads((folder/'job.json').read_text(encoding="utf-8"))
         candidates=set()
         owned=set()
         reservation=folder/'export-target.json'
         if reservation.exists():
-            record=json.loads(reservation.read_text())
+            record=json.loads(reservation.read_text(encoding="utf-8"))
             if record.get('url')==meta.get('url'):
                 target=Path(record['path'])
                 owned.update([target,target.with_suffix('.partial.docx')])
@@ -1919,6 +2130,10 @@ def trash_task(root, work, output_roots, ident):
         for base in output_roots[1:]:
             legacy=base/ident
             if legacy.is_dir() and not legacy.is_symlink():send2trash(str(legacy.resolve()))
+        # Windows cannot recycle a directory containing an open lock handle.
+        if os.name == 'nt':
+            fcntl.flock(lock, fcntl.LOCK_UN)
+            lock.close()
         send2trash(str(folder.resolve()))
     return {'ok':True,'message':'本机任务与相关文件已移入废纸篓。千问云端记录需在千问网页中管理。'}
 ```
@@ -1948,7 +2163,7 @@ class PageTests(unittest.TestCase):
         doc.add_paragraph(app.NOTICE)
         doc.add_paragraph('全文末尾 <script>不能执行</script>')
         doc.save(path)
-        (job / 'job.json').write_text(json.dumps({'document': str(path)}))
+        (job / 'job.json').write_text(json.dumps({'document': str(path)}), encoding="utf-8")
         return job, output, path
 
     def test_preview_contains_saved_text_and_notice(self):
@@ -1966,10 +2181,14 @@ class PageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             job, output, path = self.fixture(root)
-            with patch.object(app, 'WORK', root / 'work'), patch.object(app, 'OUTPUT', output), patch('app.subprocess.run') as run:
+            with patch.object(app, 'WORK', root / 'work'), patch.object(app, 'OUTPUT', output), patch('app.subprocess.run') as run, patch('app.os.startfile', create=True) as startfile:
                 run.return_value.returncode = 0
                 app.reveal_document(job.name)
-                run.assert_called_once_with(['/usr/bin/open', '-a', 'Finder', str(path.resolve().parent)], capture_output=True, text=True, timeout=15)
+                if app.os.name == 'nt':
+                    startfile.assert_called_once_with(str(path.resolve().parent))
+                    run.assert_not_called()
+                else:
+                    run.assert_called_once_with(['/usr/bin/open', '-a', 'Finder', str(path.resolve().parent)], capture_output=True, text=True, timeout=15)
                 path.unlink()
                 with self.assertRaises(ValueError):
                     app.reveal_document(job.name)
@@ -1979,8 +2198,8 @@ class PageTests(unittest.TestCase):
             root = Path(tmp)
             job = root / 'jobs/123456abcdef'
             job.mkdir(parents=True)
-            (job / 'job.json').write_text(json.dumps({'url': 'https://example.com/v', 'state': 'queued'}))
-            (job / 'page-title.json').write_text(json.dumps({'title': '对话视频'}))
+            (job / 'job.json').write_text(json.dumps({'url': 'https://example.com/v', 'state': 'queued'}), encoding="utf-8")
+            (job / 'page-title.json').write_text(json.dumps({'title': '对话视频'}), encoding="utf-8")
             with patch.object(app, 'WORK', root):
                 items = app.list_jobs()
             self.assertEqual(items[0]['title'], '对话视频')
@@ -1992,13 +2211,13 @@ class PageTests(unittest.TestCase):
             job = root / 'jobs/123456abcdef'
             job.mkdir(parents=True)
             meta = {'url': 'https://example.com/v', 'state': 'transcribing', 'transcribed_seconds': 123}
-            (job / 'job.json').write_text(json.dumps(meta))
+            (job / 'job.json').write_text(json.dumps(meta), encoding="utf-8")
             with patch.object(app, 'WORK', root), patch('app.subprocess.run') as run:
                 run.return_value.returncode = 0
                 run.return_value.stdout = '对话标题\n'
                 app.fetch_title(job.name, meta['url'])
-            self.assertEqual(json.loads((job / 'job.json').read_text()), meta)
-            self.assertEqual(json.loads((job / 'page-title.json').read_text())['title'], '对话标题')
+            self.assertEqual(json.loads((job / 'job.json').read_text(encoding="utf-8")), meta)
+            self.assertEqual(json.loads((job / 'page-title.json').read_text(encoding="utf-8"))['title'], '对话标题')
 
     def test_restart_recovers_only_unfinished_in_original_order(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2007,7 +2226,7 @@ class PageTests(unittest.TestCase):
                                            ('000000000003','completed',2), ('000000000004','failed',4)]:
                 folder = root / 'jobs' / ident
                 folder.mkdir(parents=True)
-                (folder/'job.json').write_text(json.dumps({'state':state,'created_at':created,'url':'https://example.com/'+ident}))
+                (folder/'job.json').write_text(json.dumps({'state':state,'created_at':created,'url':'https://example.com/'+ident}), encoding="utf-8")
             restored = queue.Queue()
             with patch.object(app,'WORK',root), patch.object(app,'tasks',restored), patch.object(app,'pending',set()), patch('app.start_title_lookup'):
                 app.resume_jobs()
@@ -2024,13 +2243,13 @@ class WorkerFailureTests(unittest.TestCase):
             identifiers=['000000000001','000000000002']
             for ident in identifiers:
                 folder=work/'jobs'/ident;folder.mkdir(parents=True)
-                (folder/'job.json').write_text(json.dumps({'url':'https://example.com/'+ident,'state':'queued','engine':'qianwen'}))
+                (folder/'job.json').write_text(json.dumps({'url':'https://example.com/'+ident,'state':'queued','engine':'qianwen'}), encoding="utf-8")
             fakequeue=MagicMock()
             fakequeue.get.side_effect=[(ident,'https://example.com/'+ident,ident) for ident in identifiers]+[StopIteration()]
             process=MagicMock();process.wait.return_value=0
             with patch.object(app,'WORK',work),patch.object(app,'tasks',fakequeue),patch.object(app,'pending',set(identifiers)),patch.object(app,'generations',{}),patch.object(app,'cancelled',set()),patch.object(app,'active_readers',{}),patch('app.subprocess.Popen',side_effect=[OSError('launch failed'),process]) as run:
                 with self.assertRaises(StopIteration):app.worker()
-            first=json.loads((work/'jobs'/identifiers[0]/'job.json').read_text())
+            first=json.loads((work/'jobs'/identifiers[0]/'job.json').read_text(encoding="utf-8"))
             self.assertEqual(first['state'],'failed');self.assertIn('launch failed',first['error'])
             self.assertEqual(run.call_count,2)
             self.assertEqual(fakequeue.task_done.call_count,2)
@@ -2058,7 +2277,7 @@ class LocalUploadTests(unittest.TestCase):
                 response=conn.getresponse();result=json.loads(response.read());conn.close()
                 self.assertEqual(response.status,200);self.assertEqual(result['id'],'123456abcdef')
                 enqueue.assert_called_once()
-                meta=json.loads(next((Path(tmp)/'jobs').glob('*/job.json')).read_text())
+                meta=json.loads(next((Path(tmp)/'jobs').glob('*/job.json')).read_text(encoding="utf-8"))
                 self.assertEqual(meta['source_label'],'本地上传文件：采访.mp3')
                 self.assertEqual(Path(meta['media']).read_bytes(),b'example-audio')
             finally:server.shutdown();server.server_close();thread.join()
@@ -2087,8 +2306,8 @@ class SynchronizedDeleteTests(unittest.TestCase):
     def test_failed_deletion_result_survives_task_list_refresh(self):
         with tempfile.TemporaryDirectory() as tmp:
             work=Path(tmp);folder=work/'jobs/123456abcdef';folder.mkdir(parents=True)
-            (folder/'job.json').write_text(json.dumps({'state':'completed','created_at':1}))
-            (folder/'delete-result.json').write_text(json.dumps({'status':'failed','message':'删除失败：登录失效'}))
+            (folder/'job.json').write_text(json.dumps({'state':'completed','created_at':1}), encoding="utf-8")
+            (folder/'delete-result.json').write_text(json.dumps({'status':'failed','message':'删除失败：登录失效'}), encoding="utf-8")
             with patch.object(app,'WORK',work):
                 self.assertEqual(app.list_jobs()[0]['deletion_result']['message'],'删除失败：登录失效')
 
@@ -2097,7 +2316,7 @@ class SynchronizedDeleteTests(unittest.TestCase):
         from types import SimpleNamespace
         with tempfile.TemporaryDirectory() as tmp:
             work=Path(tmp);folder=work/'jobs/123456abcdef';folder.mkdir(parents=True)
-            (folder/'job.json').write_text(json.dumps({'state':'completed','created_at':1}))
+            (folder/'job.json').write_text(json.dumps({'state':'completed','created_at':1}), encoding="utf-8")
             def trash(root,work,outputs,ident):
                 shutil.rmtree(work/'jobs'/ident)
                 return {'ok':True}
@@ -2111,7 +2330,7 @@ class SynchronizedDeleteTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             work=Path(tmp);folder=work/'jobs/123456abcdef';folder.mkdir(parents=True)
             doc=work/'keep.docx';doc.write_bytes(b'keep')
-            (folder/'job.json').write_text(json.dumps({'state':'completed','document':str(doc)}))
+            (folder/'job.json').write_text(json.dumps({'state':'completed','document':str(doc)}), encoding="utf-8")
             with patch.object(app,'WORK',work),patch('task_controls.reader_pids',return_value=[]),patch('task_controls.trash_task') as trash,patch('app.subprocess.run',return_value=SimpleNamespace(returncode=1,stderr='登录失效')):
                 with self.assertRaisesRegex(ValueError,'登录失效'):app.delete_task('123456abcdef')
                 trash.assert_not_called()
@@ -2137,7 +2356,7 @@ import install
 class InstallerTests(unittest.TestCase):
     def test_platform_rejected_before_commands(self):
         with patch.object(install.platform, 'system', return_value='Linux'), patch.object(install, 'run') as run:
-            with self.assertRaisesRegex(RuntimeError, 'macOS'):
+            with self.assertRaisesRegex(RuntimeError, 'Windows'):
                 install.main([])
             run.assert_not_called()
 
@@ -2151,26 +2370,29 @@ class InstallerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, patch.object(install, 'ROOT', Path(tmp)), patch.object(install, 'run') as run:
             folder = Path(tmp) / '.venv'
             folder.mkdir()
-            (folder / 'marker').write_text('preserve')
+            (folder / 'marker').write_text('preserve', encoding="utf-8")
             install.ensure_venv()
             backups = list(Path(tmp).glob('.venv.backup-*'))
             self.assertEqual(len(backups), 1)
-            self.assertEqual((backups[0] / 'marker').read_text(), 'preserve')
+            self.assertEqual((backups[0] / 'marker').read_text(encoding="utf-8"), 'preserve')
             self.assertEqual(run.call_args.args[0][-2:], ['venv', folder])
 
     def test_healthy_venv_reused(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(install, 'ROOT', Path(tmp)), patch.object(install, 'run') as run:
-            python = Path(tmp) / '.venv/bin/python'
+            python = install.venv_python(Path(tmp))
             python.parent.mkdir(parents=True)
             python.touch()
-            info = [[3,12], 'arm64', str(Path(tmp)/'.venv'), '/base']
+            info = [[3,12], install.platform.machine(), str(Path(tmp)/'.venv'), '/base']
             with patch.object(install.subprocess, 'check_output', return_value=json.dumps(info)):
                 self.assertEqual(install.ensure_venv(), python)
             run.assert_not_called()
 
     def test_symlink_environment_not_modified(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(install, 'ROOT', Path(tmp)), patch.object(install, 'run') as run:
-            (Path(tmp)/'.venv').symlink_to(Path(tmp)/'other')
+            try:
+                (Path(tmp)/'.venv').symlink_to(Path(tmp)/'other')
+            except OSError:
+                self.skipTest('Windows symlink privilege unavailable')
             with self.assertRaisesRegex(RuntimeError, '符号链接'):
                 install.ensure_venv()
             run.assert_not_called()
@@ -2468,7 +2690,7 @@ class PipelineTests(unittest.TestCase):
         raw={'model':'qianwen-web','segments':[{'start':0,'end':1,'speaker':'发言人 1','text':'完整识别文字 80%。'}]}
         with patch('qianwen_browser.export_audio',return_value=raw), patch.object(reader,'ffmpeg',return_value='/unused'):
             reader.prepare(argparse.Namespace(url=meta['url'],cookies_browser=None,engine='qianwen'))
-        saved = json.loads((job / 'job.json').read_text())
+        saved = json.loads((job / 'job.json').read_text(encoding="utf-8"))
         self.assertEqual(saved['state'], 'completed')
         doc = Document(saved['document'])
         texts = [p.text for p in doc.paragraphs]
@@ -2495,11 +2717,11 @@ class PipelineTests(unittest.TestCase):
             a.setnchannels(1);a.setsampwidth(2);a.setframerate(16000);a.writeframes(b'\0'*32000)
         with patch.object(app,'WORK',self.work),patch.object(app,'enqueue',side_effect=lambda url: __import__('hashlib').sha256(url.encode()).hexdigest()[:12]):
             ident=app.receive_upload(io.BytesIO(original.read_bytes()),original.stat().st_size,original.name)
-        job=self.work/'jobs'/ident;meta=json.loads((job/'job.json').read_text())
+        job=self.work/'jobs'/ident;meta=json.loads((job/'job.json').read_text(encoding="utf-8"))
         raw={'model':'qianwen-web','segments':[{'start':0,'end':1,'speaker':'发言人 1','text':'本地文件全部原文'}]}
         with patch('qianwen_browser.export_audio',return_value=raw),patch.object(reader,'ffmpeg',return_value='/unused'),patch.object(reader,'extract_audio',side_effect=lambda ff,src,dst:shutil.copy2(src,dst)):
             reader.prepare(argparse.Namespace(url=meta['url'],cookies_browser=None,engine='qianwen'))
-        saved=json.loads((job/'job.json').read_text());texts=[p.text for p in Document(saved['document']).paragraphs]
+        saved=json.loads((job/'job.json').read_text(encoding="utf-8"));texts=[p.text for p in Document(saved['document']).paragraphs]
         self.assertEqual(saved['state'],'completed')
         self.assertEqual(texts[0],'本地上传文件：我的录音.wav')
         self.assertEqual(Path(saved['document']).name,'我的录音.docx')
@@ -2532,7 +2754,7 @@ class PipelineTests(unittest.TestCase):
         path = reader.build_document(job, raw)
         audio.write_bytes(b'retained')
         path.write_bytes(path.read_bytes() + b'changed')
-        meta = json.loads((job / 'job.json').read_text())
+        meta = json.loads((job / 'job.json').read_text(encoding="utf-8"))
         with self.assertRaises(ValueError):
             reader.clear_intermediate(job, meta)
         self.assertTrue(audio.exists())
@@ -2576,6 +2798,61 @@ class DownloadLinkTests(unittest.TestCase):
         self.assertEqual(reader.download_url(source),source)
 ```
 
+### FILE: test_runtime_compat.py
+```text
+import json
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch, MagicMock
+import install
+import reader
+import runtime_compat
+
+
+class CompatibilityTests(unittest.TestCase):
+    def test_venv_layout(self):
+        with patch.object(runtime_compat, 'IS_WINDOWS', True):
+            self.assertTrue(runtime_compat.venv_python('/tmp').parts[-2:] == ('Scripts','python.exe'))
+        with patch.object(runtime_compat, 'IS_WINDOWS', False):
+            self.assertTrue(runtime_compat.venv_python('/tmp').parts[-2:] == ('bin','python'))
+
+    def test_lock_excludes_another_process(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'lock'
+            with path.open('a') as handle:
+                runtime_compat.file_lock.flock(handle, runtime_compat.file_lock.LOCK_EX | runtime_compat.file_lock.LOCK_NB)
+                code = "from runtime_compat import file_lock as f; import sys\nh=open(sys.argv[1],'a')\ntry: f.flock(h,f.LOCK_EX|f.LOCK_NB)\nexcept BlockingIOError: sys.exit(0)\nsys.exit(1)"
+                result=subprocess.run([sys.executable,'-c',code,str(path)],capture_output=True,text=True)
+                self.assertEqual(result.returncode,0,result.stderr)
+
+    def test_windows_environment(self):
+        with patch.object(install.platform,'system',return_value='Windows'), patch.object(install.platform,'machine',return_value='AMD64'), patch.object(install.sys,'version_info',(3,12)), patch.object(install.sys,'getwindowsversion',create=True,return_value=MagicMock(build=19045)), patch.object(install.shutil,'which',return_value='node.exe'), patch.object(install.subprocess,'check_output',return_value=json.dumps({'version':'24.0.0','arch':'x64'})):
+            install.check_environment()
+
+    def test_windows_arm_rejected(self):
+        with patch.object(install.platform,'system',return_value='Windows'), patch.object(install.platform,'machine',return_value='ARM64'):
+            with self.assertRaises(RuntimeError):install.check_environment()
+
+    def test_reserved_filename(self):
+        for name in ['CON','nul.txt','COM1','LPT9.docx']:
+            self.assertTrue(reader.filename(name).startswith('_'))
+        self.assertEqual(reader.filename('普通标题'),'普通标题')
+
+    def test_windows_ffmpeg_uses_copy_not_symlink(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp); source=root/'original.exe';source.write_bytes(b'ffmpeg')
+            with patch.object(reader,'WORK',root), patch.object(reader,'IS_WINDOWS',True), patch('imageio_ffmpeg.get_ffmpeg_exe',return_value=str(source)):
+                target=Path(reader.ffmpeg())
+                self.assertEqual(target.name,'ffmpeg.exe')
+                self.assertFalse(target.is_symlink())
+                self.assertEqual(target.read_bytes(),b'ffmpeg')
+
+if __name__ == '__main__':unittest.main()
+```
+
 ### FILE: test_task_controls.py
 ```text
 import json
@@ -2595,7 +2872,7 @@ class TaskControlTests(unittest.TestCase):
         output=root/'output';output.mkdir()
         path=output/'测试.docx';doc=Document();doc.add_paragraph('https://example.com/test');doc.add_paragraph('正文');doc.save(path)
         meta={'name':'测试','url':'https://example.com/test','document':str(path)}
-        (folder/'job.json').write_text(json.dumps(meta))
+        (folder/'job.json').write_text(json.dumps(meta), encoding="utf-8")
         (folder/'media').mkdir();(folder/'media/video.mp4').write_bytes(b'test')
         return folder,output,path
 
@@ -2610,7 +2887,7 @@ class TaskControlTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);folder,output,path=self.setup_files(root)
             partial=path.with_suffix('.partial.docx');partial.write_bytes(b'incomplete zip')
-            (folder/'export-target.json').write_text(json.dumps({'url':'https://example.com/test','path':str(path)}))
+            (folder/'export-target.json').write_text(json.dumps({'url':'https://example.com/test','path':str(path)}), encoding="utf-8")
             trash=self.run_delete(root,output)
             self.assertFalse(folder.exists());self.assertFalse(path.exists());self.assertFalse(partial.exists())
             self.assertTrue((trash/'123456abcdef/media/video.mp4').exists())
@@ -2619,7 +2896,7 @@ class TaskControlTests(unittest.TestCase):
     def test_preserves_unrelated_document_with_same_title(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);folder,output,path=self.setup_files(root)
-            meta=json.loads((folder/'job.json').read_text());meta.pop('document');(folder/'job.json').write_text(json.dumps(meta))
+            meta=json.loads((folder/'job.json').read_text(encoding="utf-8"));meta.pop('document');(folder/'job.json').write_text(json.dumps(meta), encoding="utf-8")
             doc=Document();doc.add_paragraph('https://other.example/video');doc.save(path)
             self.run_delete(root,output);self.assertTrue(path.exists())
 
@@ -2627,7 +2904,7 @@ class TaskControlTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);folder,output,path=self.setup_files(root)
             outside=root/'private.docx';shutil.copy2(path,outside)
-            meta=json.loads((folder/'job.json').read_text());meta['document']=str(outside);(folder/'job.json').write_text(json.dumps(meta))
+            meta=json.loads((folder/'job.json').read_text(encoding="utf-8"));meta['document']=str(outside);(folder/'job.json').write_text(json.dumps(meta), encoding="utf-8")
             with patch('task_controls.reader_pids',return_value=[]),patch('send2trash.send2trash'),self.assertRaises(ValueError):
                 task_controls.trash_task(root,root/'work',[output],'123456abcdef')
             self.assertTrue(outside.exists());self.assertTrue(folder.exists())
@@ -2666,14 +2943,14 @@ from docx import Document
 
 ROOT = Path(__file__).resolve().parents[1]
 files = sorted(subprocess.check_output(['git','ls-files','-z'], cwd=ROOT).decode().split('\0')[:-1])
-files = sorted(set(files + ['install.sh', 'test_install.py', 'tools/build_guides.py']))
-files = [f for f in files if f.endswith(('.py','.sh','.command','.html')) or f in ('requirements.txt','.gitignore')]
+files = sorted(set(files + ['install.sh', 'test_install.py', 'tools/build_guides.py', 'runtime_compat.py', 'test_runtime_compat.py', 'install-windows.ps1', 'install-windows.cmd', 'start-windows.cmd']))
+files = [f for f in files if f.endswith(('.py','.sh','.command','.html','.ps1','.cmd')) or f in ('requirements.txt','.gitignore')]
 checks = {f:hashlib.sha256((ROOT/f).read_bytes()).hexdigest() for f in files}
-(ROOT/'文件校验.json').write_text(json.dumps(checks,ensure_ascii=False,indent=2)+'\n')
-text = (ROOT/'README.md').read_text() + '\n## 仅收到本文档：完整源码\n\nAI Agent 可按 FILE 标记逐个提取文件，再核对文件校验.json；运行 `bash install.sh`。仅提取这里列出的公开源码，不迁移他人的登录资料。\n\n'
+(ROOT/'文件校验.json').write_text(json.dumps(checks,ensure_ascii=False,indent=2)+'\n', encoding="utf-8")
+text = (ROOT/'README.md').read_text(encoding="utf-8") + '\n## 仅收到本文档：完整源码\n\nAI Agent 可按 FILE 标记逐个提取文件，再核对文件校验.json；运行 `bash install.sh`。仅提取这里列出的公开源码，不迁移他人的登录资料。\n\n'
 for f in files + ['文件校验.json']:
-    text += f'### FILE: {f}\n```text\n' + (ROOT/f).read_text().rstrip() + '\n```\n\n'
-(ROOT/'INSTALL_GUIDE.md').write_text(text)
+    text += f'### FILE: {f}\n```text\n' + (ROOT/f).read_text(encoding="utf-8").rstrip() + '\n```\n\n'
+(ROOT/'INSTALL_GUIDE.md').write_text(text, encoding="utf-8")
 doc = Document()
 in_code = False
 for line in text.splitlines():
@@ -2817,25 +3094,30 @@ exit $result
 ```text
 {
   ".gitignore": "3e1cfc92af2c00c9dede00b674647a334c4cd068d8d8d743780802025013e291",
-  "app.py": "42334fb8c21c2b74196f6377bd67516af9c5bb5b1a8541128d8592b3882f4391",
+  "app.py": "2f50b21a88ee54e1a45c9d522ba52c59c0729d6ce712835fc029936214848f34",
   "check_recovery.py": "7fb929eabc113b13551764fe57caa4f72e7f37f6cded04a75c590fe54e1a3d2d",
   "cloud_migration.py": "cc5c02b953f404a280f0230e836ff9a5fe04f3e7002361ef9b8b8cdc244c07a0",
   "index.html": "6dd9e443ec67aed7db67deeaec104d47a4306608018c1e71e02dd4de2d5590b2",
-  "install.py": "1cf3ca1fd4411f010dfe38a742e3454174a4709900cfb4984639138c1f973394",
+  "install-windows.cmd": "181344afef4643cc95c8098d5839cdf8df98963e8d05a13991deb41c8a38c2ed",
+  "install-windows.ps1": "f469304d41ccb402e1b74e9915cae6f851bb272c374b054d861155b56c3416ae",
+  "install.py": "8bdbd65f6029cd942b72bdf3ec2bfe2f453f44adfbfe9c09d3942d7538d04b29",
   "install.sh": "abead2c9d17bc14579905cab745be4220776c7d954a96042028c7b4855164826",
   "launch_service.py": "2cadb70ee153b678af24a6eb9e911d7e6e2ae4906ca8d3115ff8bb723d516dba",
-  "qianwen_browser.py": "3cbbce123639ac83a41b286b9ad75011d41f503d5a00a87ee987fe790205b57f",
-  "reader.py": "e352d9bc677f1547781028ce6df00266095c713fc91787fa4a9676cb6f3d0e21",
-  "requirements.txt": "8f1f858b32310780d785ef1d196205c8c85a0c44efbb9fe4124bf7e98c9a96d3",
+  "qianwen_browser.py": "4dec4081b618300e55be1749778cc0129e71c7438cc170d56086baa953ff1a7e",
+  "reader.py": "3b57ae5f35aba1e8d16d42b8a448283fbd961482cca5ae50cd2a3f765e7dc261",
+  "requirements.txt": "ca2ed115c7d5ef1c7d63e54519aa39795e35d48d74ac5e8b7be278ccc8e7f083",
+  "runtime_compat.py": "8390ff8d5940b5665cce78b7f302ded196c79b1e8476fa62ef3d5de38fcb5fa5",
   "smoke_qianwen.py": "5a41ae58b74a8f2edaaadeb36c60235646989c5bdb2aa49e17d72dfd8778f71e",
   "smoke_qianwen_runner.py": "10c6047ad2b7ae20cac3945b41f8afdc047975fd2da3ef0dc576f3753a512409",
-  "task_controls.py": "a420be2ff8a6b4fc833d126f235e8a249c521e2a8c30435b36ebdf7426579084",
-  "test_app.py": "e850e10b4e8414ef683b73076e73d10e39b5837125edfd82f97af9a8cbb781ab",
-  "test_install.py": "64ae30ed3cabd6c08a737e1f2a2c8279321ad35f11c4bcbf1f7e662e21bec421",
+  "start-windows.cmd": "c7337ce90691fcda24e0bf19b584ff342288322681552433921f92ef399ed9b8",
+  "task_controls.py": "e452af89723c6a0506012cb48a931bb7286132925ed33d56db0069ef6e29fba4",
+  "test_app.py": "c7ffaebeb5c1ea329f86b5e1047860f080b1a7b46604250782d0cad6fc96d233",
+  "test_install.py": "5ecdd4f27fc1761c89a27fd5d623377f05315a318cbb622bbd615686798b4941",
   "test_qianwen.py": "9fb2902cabfbb02f36b5ce3bed5c96205ba05b6b390833cae97e10ecafd78473",
-  "test_reader.py": "dcbf181640b381f6d7ab81497b5fc8779ea88ae203dfb4181eb00861aaf044f5",
-  "test_task_controls.py": "2a0d1da5b7de5a52a5d3c0257dd989341bccf00ba3cda5fd57fe98db25842644",
-  "tools/build_guides.py": "b50507babc3dd6c0859a421ea0ce2401cad4af3934e2ca37c214e883a7271508",
+  "test_reader.py": "d76beb93692d593e8d9be5d0d6b2cd2a18662fda323897053f23db5726aeaaa7",
+  "test_runtime_compat.py": "3f7b61ddad4064df2704313451db4e29a28bdadb140b14c0ee2020eae177cc2b",
+  "test_task_controls.py": "4c7ef80bd87e091c6140d660cacd406f932048ba89809b4a9236e1b327d3b9b5",
+  "tools/build_guides.py": "3aae860f2e5101aae45559fa2a0494245be405a84c9089b9e5c8316e2a4a9d56",
   "停用自动启动.command": "0c2353cd41fd56b737864d09d6fe83f8b7d62cc1c51757e86fe0bc6bbd76b682",
   "切换千问并清理本地模型.command": "39ae5c718d5854f9fec85e13cd2c6fc683cb3c07844dffdd29697f97cfeeaaf4",
   "加载本次更新.command": "ceabb97ebf2b3d7df5568844de02733bc9e09f9c877621985bdaf801a182b978",

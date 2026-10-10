@@ -10,6 +10,17 @@ from pathlib import Path
 
 
 def reader_pids(root, folder):
+    if os.name == 'nt':
+        import psutil
+        verified = []
+        for process in psutil.process_iter(['pid', 'cmdline']):
+            try:
+                args = process.info['cmdline'] or []
+                if len(args) >= 4 and Path(args[1]).resolve() == (root/'reader.py').resolve() and args[2] == 'prepare' and args[3] == json.loads((folder/'job.json').read_text(encoding='utf-8'))['url']:
+                    verified.append(process.pid)
+            except (psutil.NoSuchProcess, psutil.AccessDenied, OSError, ValueError):
+                continue
+        return verified
     result=subprocess.run(['/usr/sbin/lsof','-t',str(folder/'.prepare.lock')],capture_output=True,text=True)
     verified=[]
     for value in result.stdout.split():
@@ -21,6 +32,19 @@ def reader_pids(root, folder):
 
 
 def stop_reader(pid):
+    if os.name == 'nt':
+        import psutil
+        try:
+            parent = psutil.Process(pid)
+            children = parent.children(recursive=True)
+            for process in reversed(children):
+                try: process.terminate()
+                except psutil.NoSuchProcess: pass
+            parent.terminate()
+            psutil.wait_procs(children + [parent], timeout=10)
+        except psutil.NoSuchProcess:
+            pass
+        return
     children=subprocess.run(['/usr/bin/pgrep','-P',str(pid)],capture_output=True,text=True)
     for child in children.stdout.split():stop_reader(int(child))
     try:os.kill(pid,signal.SIGTERM)
@@ -30,11 +54,11 @@ def stop_reader(pid):
 def trash_task(root, work, output_roots, ident):
     from send2trash import send2trash
     from docx import Document
-    import fcntl
+    from runtime_compat import file_lock as fcntl
     if not re.fullmatch('[0-9a-f]{12}',ident):raise ValueError('任务编号不合法')
     folder=work/'jobs'/ident
     if folder.is_symlink() or not folder.exists():raise ValueError('任务不存在')
-    meta=json.loads((folder/'job.json').read_text())
+    meta=json.loads((folder/'job.json').read_text(encoding="utf-8"))
     (folder/'.deleting').touch()
     for pid in reader_pids(root,folder):stop_reader(pid)
     # Do not remove files until the reader has actually relinquished ownership.
@@ -47,12 +71,12 @@ def trash_task(root, work, output_roots, ident):
                     (folder/'.deleting').unlink(missing_ok=True)
                     raise ValueError('任务尚未停止，未删除文件。请稍后重试。')
                 time.sleep(.2)
-        meta=json.loads((folder/'job.json').read_text())
+        meta=json.loads((folder/'job.json').read_text(encoding="utf-8"))
         candidates=set()
         owned=set()
         reservation=folder/'export-target.json'
         if reservation.exists():
-            record=json.loads(reservation.read_text())
+            record=json.loads(reservation.read_text(encoding="utf-8"))
             if record.get('url')==meta.get('url'):
                 target=Path(record['path'])
                 owned.update([target,target.with_suffix('.partial.docx')])
@@ -84,5 +108,9 @@ def trash_task(root, work, output_roots, ident):
         for base in output_roots[1:]:
             legacy=base/ident
             if legacy.is_dir() and not legacy.is_symlink():send2trash(str(legacy.resolve()))
+        # Windows cannot recycle a directory containing an open lock handle.
+        if os.name == 'nt':
+            fcntl.flock(lock, fcntl.LOCK_UN)
+            lock.close()
         send2trash(str(folder.resolve()))
     return {'ok':True,'message':'本机任务与相关文件已移入废纸篓。千问云端记录需在千问网页中管理。'}

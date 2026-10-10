@@ -1,0 +1,33 @@
+name: Installation checks
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Parse PowerShell entrypoint
+        shell: pwsh
+        run: |
+          $tokens = $null; $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("$PWD/install-windows.ps1", [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count) { throw ($errors | Out-String) }
+      - name: Full installer and repeated startup
+        shell: pwsh
+        run: |
+          python install.py --port 18767
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          ./.venv/Scripts/python.exe install.py --start-only --port 18767
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $health = Invoke-RestMethod http://127.0.0.1:18767/health
+          if ($health.ok -ne $true -or $health.engines.Count -ne 1 -or $health.engines[0] -ne 'qianwen' -or $health.project -ne "$PWD") { throw 'Health identity mismatch' }
+          Stop-Process -Id $health.pid

@@ -12,6 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, unquote
 
+from runtime_compat import venv_python
 from reader import ROOT, WORK, OUTPUT, LEGACY_OUTPUT, NOTICE, save_json, download_url
 
 HOST = '127.0.0.1'
@@ -27,7 +28,7 @@ active_readers = {}
 
 def document_path(ident):
     job = WORK / 'jobs' / ident
-    meta = json.loads((job / 'job.json').read_text())
+    meta = json.loads((job / 'job.json').read_text(encoding="utf-8"))
     path = Path(meta.get('document', '/nonexistent')).resolve()
     migrated = OUTPUT / path.name
     if path.parent in (OUTPUT.parent / '网页视频转语音文稿', OUTPUT.parent / '网页视频转语音识别文字稿') and migrated.is_file():
@@ -60,6 +61,9 @@ def preview_document(ident):
 
 def reveal_document(ident):
     path = document_path(ident)
+    if os.name == 'nt':
+        os.startfile(str(path.parent))
+        return
     result = subprocess.run(['/usr/bin/open', '-a', 'Finder', str(path.parent)],
                             capture_output=True, text=True, timeout=15)
     if result.returncode:
@@ -71,7 +75,7 @@ def fetch_title(ident, url):
     """Resolve metadata independently of the sequential transcription queue."""
     try:
         result = subprocess.run(
-            [str(ROOT / '.venv/bin/python'), '-m', 'yt_dlp', '--skip-download',
+            [str(venv_python(ROOT)), '-m', 'yt_dlp', '--skip-download',
              '--no-playlist', '--ignore-no-formats-error', '--no-warnings',
              '--socket-timeout', '8', '--retries', '0', '--print', 'title', download_url(url)],
             capture_output=True, text=True, timeout=40)
@@ -80,7 +84,7 @@ def fetch_title(ident, url):
             return
         with mutex:
             path = WORK / 'jobs' / ident / 'job.json'
-            meta = json.loads(path.read_text())
+            meta = json.loads(path.read_text(encoding="utf-8"))
             # Active reader owns job.json. Separate metadata avoids competing writes.
             save_json(path.parent / 'page-title.json', {'title': title, 'url': url})
     except (OSError, ValueError, subprocess.SubprocessError):
@@ -113,13 +117,13 @@ def list_jobs():
     items = []
     for path in (WORK / 'jobs').glob('*/job.json'):
         try:
-            item = json.loads(path.read_text())
+            item = json.loads(path.read_text(encoding="utf-8"))
             item['id'] = path.parent.name
             deletion=path.parent/'delete-result.json'
-            if deletion.exists():item['deletion_result']=json.loads(deletion.read_text())
+            if deletion.exists():item['deletion_result']=json.loads(deletion.read_text(encoding="utf-8"))
             title_path = path.parent / 'page-title.json'
             if not item.get('title') and title_path.exists():
-                item['title'] = json.loads(title_path.read_text()).get('title')
+                item['title'] = json.loads(title_path.read_text(encoding="utf-8")).get('title')
             item['created_at'] = item.get('created_at', task_created_at(path.parent))
             item['has_document'] = bool(item.get('document') and Path(item['document']).is_file())
             items.append(item)
@@ -134,7 +138,7 @@ def worker():
         log=None
         try:
             folder = WORK / 'jobs' / ident
-            import fcntl
+            from runtime_compat import file_lock as fcntl
             if (ident,generation) in cancelled or not folder.exists():continue
             with (folder / '.prepare.lock').open('a') as lock:
                 while True:
@@ -147,8 +151,8 @@ def worker():
             with mutex:
                 if (ident,generation) in cancelled or not folder.exists() or (folder/'.deleting').exists():continue
                 log=(folder/'run.log').open('ab')
-                process=subprocess.Popen([str(ROOT/'.venv/bin/python'),str(ROOT/'reader.py'),
-                     'prepare',url,'--engine',json.loads((folder/'job.json').read_text()).get('engine','qianwen')],
+                process=subprocess.Popen([str(venv_python(ROOT)),str(ROOT/'reader.py'),
+                     'prepare',url,'--engine',json.loads((folder/'job.json').read_text(encoding="utf-8")).get('engine','qianwen')],
                      stdout=log,stderr=log,start_new_session=True)
                 active_readers[ident]=(process,generation)
             result=process.wait();log.close()
@@ -157,7 +161,7 @@ def worker():
             record=WORK/'jobs'/ident/'job.json'
             if record.exists() and (ident,generation) not in cancelled:
                 try:
-                    meta=json.loads(record.read_text())
+                    meta=json.loads(record.read_text(encoding="utf-8"))
                     meta.update(state='failed',error='后台任务未能启动或任务记录异常：'+str(error))
                     save_json(record,meta)
                 except (OSError,ValueError):pass
@@ -197,7 +201,7 @@ def delete_task(ident):
             # Also stop readers recovered after a web-service restart.
             from task_controls import reader_pids
             for pid in reader_pids(ROOT,folder):stop_reader(pid)
-            import fcntl
+            from runtime_compat import file_lock as fcntl
             with (folder/'.prepare.lock').open('a') as lock:
                 deadline=time.monotonic()+15
                 while True:
@@ -205,16 +209,16 @@ def delete_task(ident):
                     except BlockingIOError:
                         if time.monotonic()>deadline:raise ValueError('任务尚未停止，请稍后重试删除')
                         time.sleep(.2)
-                result=subprocess.run([str(ROOT/'.venv/bin/python'),str(ROOT/'qianwen_browser.py'),'delete','--job',ident],capture_output=True,text=True,timeout=120)
+                result=subprocess.run([str(venv_python(ROOT)),str(ROOT/'qianwen_browser.py'),'delete','--job',ident],capture_output=True,text=True,timeout=120)
                 if result.returncode:raise ValueError('千问同步删除失败，本机任务和文稿已保留：'+(result.stderr.strip().splitlines()[-1] if result.stderr.strip() else '后台浏览器未能完成删除'))
         except Exception as error:
             (folder/'.deleting').unlink(missing_ok=True)
-            meta=json.loads((folder/'job.json').read_text())
+            meta=json.loads((folder/'job.json').read_text(encoding="utf-8"))
             if meta.get('state') not in ('completed','failed','login_required'):
                 meta.update(state='failed',error='任务已停止，千问同步删除未完成：'+str(error))
                 save_json(folder/'job.json',meta)
             raise
-        cloud_meta=json.loads((folder/'job.json').read_text())
+        cloud_meta=json.loads((folder/'job.json').read_text(encoding="utf-8"))
         cloud_status=cloud_meta.get('qianwen_delete_result','deleted' if cloud_meta.get('qianwen_cloud_deleted') else 'failed')
         result=trash_task(ROOT,WORK,[OUTPUT,LEGACY_OUTPUT,ROOT/'outputs',OUTPUT.parent/'网页视频转语音文稿'],ident)
         pending.discard(ident);generations.pop(ident,None)
@@ -225,7 +229,7 @@ def delete_task(ident):
 
 def login_status():
     path=WORK/'qianwen-auth.json'
-    state=json.loads(path.read_text()) if path.exists() else {'status':'unknown'}
+    state=json.loads(path.read_text(encoding="utf-8")) if path.exists() else {'status':'unknown'}
     if not state.get('last_success'):
         successes=[item.get('added_at',0) for item in list_jobs() if item.get('state')=='completed' and item.get('model')=='qianwen-web']
         if successes:state['last_success']=max(successes)
@@ -239,12 +243,12 @@ def open_login():
     with mutex:
         if login_process and login_process.poll() is None:return {'ok':True,'message':'登录窗口已经打开。'}
         lock=WORK/'qianwen-browser.lock'
-        import fcntl
+        from runtime_compat import file_lock as fcntl
         with lock.open('a') as handle:
             try:fcntl.flock(handle,fcntl.LOCK_EX|fcntl.LOCK_NB)
             except BlockingIOError:raise ValueError('千问浏览器正在处理任务，请稍后再登录。')
         with (WORK/'qianwen-login.log').open('ab') as log:
-            login_process=subprocess.Popen([str(ROOT/'.venv/bin/python'),str(ROOT/'qianwen_browser.py'),'login-ui'],
+            login_process=subprocess.Popen([str(venv_python(ROOT)),str(ROOT/'qianwen_browser.py'),'login-ui'],
                                            stdin=subprocess.DEVNULL,stdout=log,stderr=log,start_new_session=True)
     return {'ok':True,'message':'正在打开千问登录窗口；登录完成后关闭该窗口即可。'}
 
@@ -262,10 +266,10 @@ def enqueue(url, engine="qianwen"):
     with mutex:
         if ident in pending:
             return ident
-        meta = json.loads((folder / 'job.json').read_text()) if (folder / 'job.json').exists() else {}
+        meta = json.loads((folder / 'job.json').read_text(encoding="utf-8")) if (folder / 'job.json').exists() else {}
         if meta.get('state') == 'completed' and Path(meta.get('document', '/nonexistent')).is_file():
             return ident
-        import fcntl
+        from runtime_compat import file_lock as fcntl
         with (folder / '.prepare.lock').open('a') as lock:
             try:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -384,7 +388,7 @@ class Handler(BaseHTTPRequestHandler):
                     result=delete_task(ident)
                 except (ValueError,OSError,subprocess.SubprocessError) as error:
                     folder=WORK/'jobs'/ident
-                    meta=json.loads((folder/'job.json').read_text()) if (folder/'job.json').exists() else {}
+                    meta=json.loads((folder/'job.json').read_text(encoding="utf-8")) if (folder/'job.json').exists() else {}
                     cloud_status=meta.get('qianwen_delete_result','deleted' if meta.get('qianwen_cloud_deleted') else 'failed')
                     report=deletion_report(False,cloud_status,str(error))
                     if folder.exists():save_json(folder/'delete-result.json',report)

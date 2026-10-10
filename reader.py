@@ -11,6 +11,7 @@ import unicodedata
 import wave
 import time
 from pathlib import Path
+from runtime_compat import IS_WINDOWS
 
 ROOT = Path(__file__).resolve().parent
 WORK = ROOT / 'work'
@@ -31,6 +32,8 @@ def filename(title):
     # macOS filenames have a byte limit, rather than a character limit.
     while len(title.encode('utf-8')) > 190:
         title = title[:-1]
+    if re.fullmatch(r'(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?', title, re.I):
+        title = '_' + title
     return title or '未命名音视频'
 
 
@@ -38,9 +41,12 @@ def ffmpeg():
     import imageio_ffmpeg
     folder = WORK / 'bin'
     folder.mkdir(parents=True, exist_ok=True)
-    target = folder / 'ffmpeg'
+    target = folder / ('ffmpeg.exe' if IS_WINDOWS else 'ffmpeg')
     if not target.exists():
-        target.symlink_to(imageio_ffmpeg.get_ffmpeg_exe())
+        if IS_WINDOWS:
+            __import__('shutil').copy2(imageio_ffmpeg.get_ffmpeg_exe(), target)
+        else:
+            target.symlink_to(imageio_ffmpeg.get_ffmpeg_exe())
     os.environ['PATH'] = str(folder) + os.pathsep + os.environ.get('PATH', '')
     return str(target)
 
@@ -54,7 +60,7 @@ def load_job(job):
     path = Path(job).resolve()
     if path.parent != (WORK / 'jobs').resolve() or not path.is_dir():
         raise ValueError('任务必须位于本项目 work/jobs 下')
-    return path, json.loads((path / 'job.json').read_text())
+    return path, json.loads((path / 'job.json').read_text(encoding="utf-8"))
 
 
 def make_blocks(segments, limit=2200):
@@ -93,7 +99,7 @@ def prepare(args):
         raise ValueError('请输入 HTTP 或 HTTPS 网页链接')
     try:
         os.nice(10)
-    except PermissionError:
+    except (PermissionError, AttributeError):
         print('当前执行环境不允许调整进程优先级，继续单任务处理。', flush=True)
     ff = ffmpeg()
     ident = hashlib.sha256(args.url.encode()).hexdigest()[:12]
@@ -101,12 +107,12 @@ def prepare(args):
     job.mkdir(parents=True, exist_ok=True)
     lock = job / '.prepare.lock'
     # OS file locks release automatically after an interrupted process.
-    import fcntl
-    with lock.open('w') as handle:
+    from runtime_compat import file_lock as fcntl
+    with lock.open('a') as handle:
         fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
         meta = {'url': args.url, 'state': 'downloading'}
         if (job / 'job.json').exists():
-            meta = json.loads((job / 'job.json').read_text())
+            meta = json.loads((job / 'job.json').read_text(encoding="utf-8"))
             if meta.get('state') == 'completed' and Path(meta.get('document', '/nonexistent')).is_file():
                 print(f'已有任务，无需重复处理：{job}', flush=True)
                 return
@@ -168,7 +174,7 @@ def prepare(args):
             save_json(job / 'job.json', meta)
             os.environ.setdefault('SSL_CERT_FILE', '/etc/ssl/cert.pem')
             raw_path = job / 'raw-transcript.json'
-            raw = json.loads(raw_path.read_text()) if raw_path.exists() else {}
+            raw = json.loads(raw_path.read_text(encoding="utf-8")) if raw_path.exists() else {}
             if raw.get('model') != 'qianwen-web':
                 from qianwen_browser import export_with_retry
                 raw = export_with_retry(wav, job, meta, save_json)
@@ -229,11 +235,11 @@ def verify_document(path, meta, blocks):
 
 def clear_intermediate(job, meta):
     import shutil
-    report = json.loads((job / 'validation.json').read_text())
+    report = json.loads((job / 'validation.json').read_text(encoding="utf-8"))
     path = Path(meta['document'])
     if hashlib.sha256(path.read_bytes()).hexdigest() != report['document_sha256']:
         raise ValueError('Word 已改动，拒绝清理原媒体')
-    raw = json.loads((job / 'raw-transcript.json').read_text())
+    raw = json.loads((job / 'raw-transcript.json').read_text(encoding="utf-8"))
     verify_document(path, meta, make_blocks(raw['segments']))
     for key in ('media', 'audio'):
         if not meta.get(key):
@@ -265,6 +271,8 @@ def clear_intermediate(job, meta):
 
 def configure_folder_sort(folder):
     """Persist Finder list-view settings for this output folder only."""
+    if IS_WINDOWS:
+        return
     from ds_store import DSStore
     settings = folder / '.DS_Store'
     with DSStore.open(str(settings), 'r+' if settings.exists() and settings.stat().st_size else 'w+') as store:
@@ -287,7 +295,7 @@ def build_document(job, raw=None):
     from docx.enum.text import WD_COLOR_INDEX
     from docx.oxml.ns import qn
     job, meta = load_job(job)
-    raw = raw if raw is not None else json.loads((job / 'raw-transcript.json').read_text())
+    raw = raw if raw is not None else json.loads((job / 'raw-transcript.json').read_text(encoding="utf-8"))
     blocks = make_blocks(raw.get('segments', []))
     if not blocks:
         raise ValueError('识别结果为空，保留媒体，不生成 Word')

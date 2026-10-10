@@ -11,7 +11,7 @@ import install
 class InstallerTests(unittest.TestCase):
     def test_platform_rejected_before_commands(self):
         with patch.object(install.platform, 'system', return_value='Linux'), patch.object(install, 'run') as run:
-            with self.assertRaisesRegex(RuntimeError, 'macOS'):
+            with self.assertRaisesRegex(RuntimeError, 'Windows'):
                 install.main([])
             run.assert_not_called()
 
@@ -25,26 +25,29 @@ class InstallerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, patch.object(install, 'ROOT', Path(tmp)), patch.object(install, 'run') as run:
             folder = Path(tmp) / '.venv'
             folder.mkdir()
-            (folder / 'marker').write_text('preserve')
+            (folder / 'marker').write_text('preserve', encoding="utf-8")
             install.ensure_venv()
             backups = list(Path(tmp).glob('.venv.backup-*'))
             self.assertEqual(len(backups), 1)
-            self.assertEqual((backups[0] / 'marker').read_text(), 'preserve')
+            self.assertEqual((backups[0] / 'marker').read_text(encoding="utf-8"), 'preserve')
             self.assertEqual(run.call_args.args[0][-2:], ['venv', folder])
 
     def test_healthy_venv_reused(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(install, 'ROOT', Path(tmp)), patch.object(install, 'run') as run:
-            python = Path(tmp) / '.venv/bin/python'
+            python = install.venv_python(Path(tmp))
             python.parent.mkdir(parents=True)
             python.touch()
-            info = [[3,12], 'arm64', str(Path(tmp)/'.venv'), '/base']
+            info = [[3,12], install.platform.machine(), str(Path(tmp)/'.venv'), '/base']
             with patch.object(install.subprocess, 'check_output', return_value=json.dumps(info)):
                 self.assertEqual(install.ensure_venv(), python)
             run.assert_not_called()
 
     def test_symlink_environment_not_modified(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(install, 'ROOT', Path(tmp)), patch.object(install, 'run') as run:
-            (Path(tmp)/'.venv').symlink_to(Path(tmp)/'other')
+            try:
+                (Path(tmp)/'.venv').symlink_to(Path(tmp)/'other')
+            except OSError:
+                self.skipTest('Windows symlink privilege unavailable')
             with self.assertRaisesRegex(RuntimeError, '符号链接'):
                 install.ensure_venv()
             run.assert_not_called()

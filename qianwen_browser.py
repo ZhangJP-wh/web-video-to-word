@@ -56,7 +56,7 @@ def upload_failure_message(state, message):
 def auth_state(status):
     from reader import save_json
     path=ROOT/'work/qianwen-auth.json'
-    previous=__import__('json').loads(path.read_text()) if path.exists() else {}
+    previous=__import__('json').loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     previous.update(status=status,checked_at=time.time())
     if status=='valid':previous['last_success']=time.time()
     save_json(path,previous)
@@ -89,7 +89,7 @@ def require_cloud_available(page):
 
 @contextmanager
 def browser_context(playwright, headed=False):
-    import fcntl
+    from runtime_compat import file_lock as fcntl
     PROFILE.mkdir(parents=True, exist_ok=True)
     with (ROOT/'work/qianwen-browser.lock').open('a') as lock:
         try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
@@ -125,7 +125,7 @@ def export_panel(page,job):
     except AssertionError as error:
         from playwright.sync_api import TimeoutError
         page.screenshot(path=str(job/'browser-diagnostic.png'),full_page=True)
-        (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
+        (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text(), encoding="utf-8")
         raise TimeoutError('千问导出选项尚未加载完整，已保留任务和媒体') from error
     return panel,checks
 
@@ -143,11 +143,11 @@ def confirm_submission(page,title,job,meta,save,timeout=120000):
             return
         except BrowserTimeout:
             body=page.locator('body').inner_text()
-            (job/'browser-diagnostic.txt').write_text(body)
+            (job/'browser-diagnostic.txt').write_text(body, encoding="utf-8")
             events=job/'upload-events.txt'
-            previous=events.read_text() if events.exists() else ''
+            previous=events.read_text(encoding="utf-8") if events.exists() else ''
             if not previous.endswith(body+'\n'):
-                events.write_text((previous+'\n'+str(time.time())+'\n'+body+'\n')[-64000:])
+                events.write_text((previous+'\n'+str(time.time())+'\n'+body+'\n')[-64000:], encoding="utf-8")
             if '存储已满' in body and '删除不用的记录' in body:
                 meta.update(qianwen_submission_attempted=False,qianwen_submitted=False,qianwen_upload_confirmed=False)
                 save(job/'job.json',meta)
@@ -173,7 +173,7 @@ def export_audio(audio, job, meta, save):
             meta['state']='cloud_connecting';save(job/'job.json',meta)
             page.goto(meta.get('qianwen_url') or URL)
             page.screenshot(path=str(job/'browser-diagnostic.png'), full_page=True)
-            (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
+            (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text(), encoding="utf-8")
             require_login_if_visible(page)
             if not meta.get('qianwen_url'):
                 try:
@@ -191,14 +191,14 @@ def export_audio(audio, job, meta, save):
                         page.get_by_role('button', name=re.compile('点击或将')).click()
                     chooser.value.set_files(str(upload))
                     page.screenshot(path=str(job/'upload-selected.png'),full_page=True)
-                    (job/'upload-selected.txt').write_text(page.locator('body').inner_text())
+                    (job/'upload-selected.txt').write_text(page.locator('body').inner_text(), encoding="utf-8")
                     from playwright.sync_api import expect
                     expect(page.get_by_role('button',name='确 认',exact=True)).to_be_enabled(timeout=120000)
                     meta['qianwen_upload_title']=upload.stem
                     meta['qianwen_submission_attempted']=True;save(job/'job.json',meta)
                     page.get_by_role('button', name='确 认', exact=True).click()
                     page.screenshot(path=str(job/'upload-confirmed.png'),full_page=True)
-                    (job/'upload-confirmed.txt').write_text(page.locator('body').inner_text())
+                    (job/'upload-confirmed.txt').write_text(page.locator('body').inner_text(), encoding="utf-8")
                     require_login_if_visible(page)
                 title = upload.stem
                 confirm_submission(page,title,job,meta,save)
@@ -215,7 +215,7 @@ def export_audio(audio, job, meta, save):
                         page.get_by_role('button', name='导出', exact=True).wait_for(timeout=10000)
                     except BrowserTimeout:
                         page.screenshot(path=str(job/'browser-diagnostic.png'),full_page=True)
-                        (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
+                        (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text(), encoding="utf-8")
                         meta['last_browser_check']=time.time();save(job/'job.json',meta)
                         time.sleep(5)
                         continue
@@ -226,7 +226,7 @@ def export_audio(audio, job, meta, save):
             meta['state']='cloud_exporting';save(job/'job.json',meta)
             page.get_by_role('button', name='导出', exact=True).wait_for(timeout=60000)
             page.screenshot(path=str(job/'browser-diagnostic.png'), full_page=True)
-            (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
+            (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text(), encoding="utf-8")
             require_cloud_available(page)
             page.get_by_role('button', name='导出', exact=True).click()
             panel,checks=export_panel(page,job)
@@ -283,7 +283,7 @@ def delete_cloud(job):
     import json
     from reader import save_json
     from playwright.sync_api import sync_playwright
-    meta=json.loads((job/'job.json').read_text())
+    meta=json.loads((job/'job.json').read_text(encoding="utf-8"))
     if meta.get('qianwen_cloud_deleted') or meta.get('qianwen_delete_resolved'):return
     if not any(meta.get(key) for key in ('qianwen_submitted','qianwen_submission_attempted','qianwen_url','qianwen_upload_confirmed')):
         meta.update(qianwen_delete_resolved=True,qianwen_delete_result='not_uploaded');save_json(job/'job.json',meta);return

@@ -1,11 +1,11 @@
 {
   "date": "2026-10-08",
-  "source_files": 29,
+  "source_files": 34,
   "source_sha256_verified": true,
   "markdown_source_roundtrip": true,
   "word_full_source_roundtrip": true,
   "unit_tests": {
-    "passed": 60,
+    "passed": 66,
     "environment": "existing Apple Silicon macOS, Python 3.12; ASR mocked"
   },
   "pip_check": true,
@@ -33,5 +33,11 @@
     ".venv",
     "logs",
     "model caches"
-  ]
+  ],
+  "windows": {
+    "implemented": true,
+    "github_actions": "pending",
+    "fresh_physical_pc_tested": false,
+    "winget_install_branch_tested": false
+  }
 }

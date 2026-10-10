@@ -21,7 +21,7 @@ class PageTests(unittest.TestCase):
         doc.add_paragraph(app.NOTICE)
         doc.add_paragraph('全文末尾 <script>不能执行</script>')
         doc.save(path)
-        (job / 'job.json').write_text(json.dumps({'document': str(path)}))
+        (job / 'job.json').write_text(json.dumps({'document': str(path)}), encoding="utf-8")
         return job, output, path
 
     def test_preview_contains_saved_text_and_notice(self):
@@ -39,10 +39,14 @@ class PageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             job, output, path = self.fixture(root)
-            with patch.object(app, 'WORK', root / 'work'), patch.object(app, 'OUTPUT', output), patch('app.subprocess.run') as run:
+            with patch.object(app, 'WORK', root / 'work'), patch.object(app, 'OUTPUT', output), patch('app.subprocess.run') as run, patch('app.os.startfile', create=True) as startfile:
                 run.return_value.returncode = 0
                 app.reveal_document(job.name)
-                run.assert_called_once_with(['/usr/bin/open', '-a', 'Finder', str(path.resolve().parent)], capture_output=True, text=True, timeout=15)
+                if app.os.name == 'nt':
+                    startfile.assert_called_once_with(str(path.resolve().parent))
+                    run.assert_not_called()
+                else:
+                    run.assert_called_once_with(['/usr/bin/open', '-a', 'Finder', str(path.resolve().parent)], capture_output=True, text=True, timeout=15)
                 path.unlink()
                 with self.assertRaises(ValueError):
                     app.reveal_document(job.name)
@@ -52,8 +56,8 @@ class PageTests(unittest.TestCase):
             root = Path(tmp)
             job = root / 'jobs/123456abcdef'
             job.mkdir(parents=True)
-            (job / 'job.json').write_text(json.dumps({'url': 'https://example.com/v', 'state': 'queued'}))
-            (job / 'page-title.json').write_text(json.dumps({'title': '对话视频'}))
+            (job / 'job.json').write_text(json.dumps({'url': 'https://example.com/v', 'state': 'queued'}), encoding="utf-8")
+            (job / 'page-title.json').write_text(json.dumps({'title': '对话视频'}), encoding="utf-8")
             with patch.object(app, 'WORK', root):
                 items = app.list_jobs()
             self.assertEqual(items[0]['title'], '对话视频')
@@ -65,13 +69,13 @@ class PageTests(unittest.TestCase):
             job = root / 'jobs/123456abcdef'
             job.mkdir(parents=True)
             meta = {'url': 'https://example.com/v', 'state': 'transcribing', 'transcribed_seconds': 123}
-            (job / 'job.json').write_text(json.dumps(meta))
+            (job / 'job.json').write_text(json.dumps(meta), encoding="utf-8")
             with patch.object(app, 'WORK', root), patch('app.subprocess.run') as run:
                 run.return_value.returncode = 0
                 run.return_value.stdout = '对话标题\n'
                 app.fetch_title(job.name, meta['url'])
-            self.assertEqual(json.loads((job / 'job.json').read_text()), meta)
-            self.assertEqual(json.loads((job / 'page-title.json').read_text())['title'], '对话标题')
+            self.assertEqual(json.loads((job / 'job.json').read_text(encoding="utf-8")), meta)
+            self.assertEqual(json.loads((job / 'page-title.json').read_text(encoding="utf-8"))['title'], '对话标题')
 
     def test_restart_recovers_only_unfinished_in_original_order(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -80,7 +84,7 @@ class PageTests(unittest.TestCase):
                                            ('000000000003','completed',2), ('000000000004','failed',4)]:
                 folder = root / 'jobs' / ident
                 folder.mkdir(parents=True)
-                (folder/'job.json').write_text(json.dumps({'state':state,'created_at':created,'url':'https://example.com/'+ident}))
+                (folder/'job.json').write_text(json.dumps({'state':state,'created_at':created,'url':'https://example.com/'+ident}), encoding="utf-8")
             restored = queue.Queue()
             with patch.object(app,'WORK',root), patch.object(app,'tasks',restored), patch.object(app,'pending',set()), patch('app.start_title_lookup'):
                 app.resume_jobs()
@@ -97,13 +101,13 @@ class WorkerFailureTests(unittest.TestCase):
             identifiers=['000000000001','000000000002']
             for ident in identifiers:
                 folder=work/'jobs'/ident;folder.mkdir(parents=True)
-                (folder/'job.json').write_text(json.dumps({'url':'https://example.com/'+ident,'state':'queued','engine':'qianwen'}))
+                (folder/'job.json').write_text(json.dumps({'url':'https://example.com/'+ident,'state':'queued','engine':'qianwen'}), encoding="utf-8")
             fakequeue=MagicMock()
             fakequeue.get.side_effect=[(ident,'https://example.com/'+ident,ident) for ident in identifiers]+[StopIteration()]
             process=MagicMock();process.wait.return_value=0
             with patch.object(app,'WORK',work),patch.object(app,'tasks',fakequeue),patch.object(app,'pending',set(identifiers)),patch.object(app,'generations',{}),patch.object(app,'cancelled',set()),patch.object(app,'active_readers',{}),patch('app.subprocess.Popen',side_effect=[OSError('launch failed'),process]) as run:
                 with self.assertRaises(StopIteration):app.worker()
-            first=json.loads((work/'jobs'/identifiers[0]/'job.json').read_text())
+            first=json.loads((work/'jobs'/identifiers[0]/'job.json').read_text(encoding="utf-8"))
             self.assertEqual(first['state'],'failed');self.assertIn('launch failed',first['error'])
             self.assertEqual(run.call_count,2)
             self.assertEqual(fakequeue.task_done.call_count,2)
@@ -131,7 +135,7 @@ class LocalUploadTests(unittest.TestCase):
                 response=conn.getresponse();result=json.loads(response.read());conn.close()
                 self.assertEqual(response.status,200);self.assertEqual(result['id'],'123456abcdef')
                 enqueue.assert_called_once()
-                meta=json.loads(next((Path(tmp)/'jobs').glob('*/job.json')).read_text())
+                meta=json.loads(next((Path(tmp)/'jobs').glob('*/job.json')).read_text(encoding="utf-8"))
                 self.assertEqual(meta['source_label'],'本地上传文件：采访.mp3')
                 self.assertEqual(Path(meta['media']).read_bytes(),b'example-audio')
             finally:server.shutdown();server.server_close();thread.join()
@@ -160,8 +164,8 @@ class SynchronizedDeleteTests(unittest.TestCase):
     def test_failed_deletion_result_survives_task_list_refresh(self):
         with tempfile.TemporaryDirectory() as tmp:
             work=Path(tmp);folder=work/'jobs/123456abcdef';folder.mkdir(parents=True)
-            (folder/'job.json').write_text(json.dumps({'state':'completed','created_at':1}))
-            (folder/'delete-result.json').write_text(json.dumps({'status':'failed','message':'删除失败：登录失效'}))
+            (folder/'job.json').write_text(json.dumps({'state':'completed','created_at':1}), encoding="utf-8")
+            (folder/'delete-result.json').write_text(json.dumps({'status':'failed','message':'删除失败：登录失效'}), encoding="utf-8")
             with patch.object(app,'WORK',work):
                 self.assertEqual(app.list_jobs()[0]['deletion_result']['message'],'删除失败：登录失效')
 
@@ -170,7 +174,7 @@ class SynchronizedDeleteTests(unittest.TestCase):
         from types import SimpleNamespace
         with tempfile.TemporaryDirectory() as tmp:
             work=Path(tmp);folder=work/'jobs/123456abcdef';folder.mkdir(parents=True)
-            (folder/'job.json').write_text(json.dumps({'state':'completed','created_at':1}))
+            (folder/'job.json').write_text(json.dumps({'state':'completed','created_at':1}), encoding="utf-8")
             def trash(root,work,outputs,ident):
                 shutil.rmtree(work/'jobs'/ident)
                 return {'ok':True}
@@ -184,7 +188,7 @@ class SynchronizedDeleteTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             work=Path(tmp);folder=work/'jobs/123456abcdef';folder.mkdir(parents=True)
             doc=work/'keep.docx';doc.write_bytes(b'keep')
-            (folder/'job.json').write_text(json.dumps({'state':'completed','document':str(doc)}))
+            (folder/'job.json').write_text(json.dumps({'state':'completed','document':str(doc)}), encoding="utf-8")
             with patch.object(app,'WORK',work),patch('task_controls.reader_pids',return_value=[]),patch('task_controls.trash_task') as trash,patch('app.subprocess.run',return_value=SimpleNamespace(returncode=1,stderr='登录失效')):
                 with self.assertRaisesRegex(ValueError,'登录失效'):app.delete_task('123456abcdef')
                 trash.assert_not_called()
