@@ -190,6 +190,8 @@ YouTube人工登录窗口使用已安装的正式版Chrome直接启动，不由P
 
 等待YouTube人工验证时，任务卡显示“已关闭验证弹窗，重新开始任务”。完成验证并关闭专用窗口后点击它，通知原任务继续，不重复排队；Chrome仍有后台进程时也可确认。
 
+新上传千问的音频以固定任务序号和标题命名，例如“52 - 标题”，与工具任务列表及Word文件保持一致。重试和删除不会改变序号；已经上传的旧云端记录保留原名称和删除匹配信息，不重新上传。
+
 ## 仅收到本文档：完整源码
 
 AI Agent 可按 FILE 标记逐个提取文件，再核对文件校验.json；运行 `bash install.sh`。仅提取这里列出的公开源码，不迁移他人的登录资料。
@@ -1759,7 +1761,9 @@ def export_audio(audio, job, meta, save):
     from playwright.sync_api import sync_playwright
     from reader import ffmpeg, filename
     meta['state']='cloud_preparing';save(job/'job.json',meta)
-    upload = job/'media'/(filename(meta['title'])+'-'+job.name+'.mp3')
+    from task_numbering import numbers,document_name
+    numbered_title=document_name(numbers(job.parent.parent)[job.name],filename(meta['title']))
+    upload = job/'media'/(numbered_title+'.mp3')
     if not upload.exists():
         subprocess.run([ffmpeg(), '-nostdin', '-v', 'error', '-y', '-i', str(audio),
                         '-c:a', 'libmp3lame', '-b:a', '64k', str(upload)], check=True)
@@ -1793,6 +1797,7 @@ def export_audio(audio, job, meta, save):
                     from playwright.sync_api import expect
                     expect(page.get_by_role('button',name='确 认',exact=True)).to_be_enabled(timeout=120000)
                     meta['qianwen_upload_title']=upload.stem
+                    meta['qianwen_numbered_title']=True
                     meta['qianwen_submission_attempted']=True;save(job/'job.json',meta)
                     page.get_by_role('button', name='确 认', exact=True).click()
                     page.screenshot(path=str(job/'upload-confirmed.png'),full_page=True)
@@ -1854,7 +1859,12 @@ def delete_cloud_record(page, job, meta, save):
     if not any(meta.get(key) for key in ('qianwen_submitted','qianwen_submission_attempted','qianwen_url','qianwen_upload_confirmed')):
         meta.update(qianwen_delete_resolved=True,qianwen_delete_result='not_uploaded');save(job/'job.json',meta);return
     title=meta.get('qianwen_upload_title') or filename(meta['title'])+'-'+job.name
-    if not title.endswith('-'+job.name):raise RuntimeError('无法确认千问记录归属，未执行删除')
+    if not title.endswith('-'+job.name):
+        if not meta.get('qianwen_numbered_title'):raise RuntimeError('无法确认千问记录归属，未执行删除')
+        from task_numbering import numbers,document_name
+        expected=document_name(numbers(job.parent.parent)[job.name],filename(meta['title']))
+        if not meta.get('qianwen_numbered_title') or title!=expected:
+            raise RuntimeError('无法确认千问记录归属，未执行删除')
     require_login_if_visible(page)
     page.get_by_text('最近记录',exact=False).first.wait_for(timeout=30000)
     rows=page.locator('[data-e2e-test-id="folders_item_div"]').filter(has=page.get_by_text(title,exact=True))
@@ -4005,7 +4015,7 @@ exit $result
   "install.py": "8fb062e855fb41616c65923dc4ca43808d4c710fc8919d1cb62c039a1fb2144c",
   "install.sh": "abead2c9d17bc14579905cab745be4220776c7d954a96042028c7b4855164826",
   "launch_service.py": "2cadb70ee153b678af24a6eb9e911d7e6e2ae4906ca8d3115ff8bb723d516dba",
-  "qianwen_browser.py": "9ec0997fe8d21e15c169dd534c6b1686bcdbd4281497aa6a8ac3ad3b1d91e109",
+  "qianwen_browser.py": "7b380bde0713ddc2b8717787f2e56412e1331f0ca1dec70e032ce6336f920427",
   "reader.py": "f9dad8cc4abb0173d5f9d56c01b4d90a787a49b83c216cae86f42ada2bc53fdd",
   "requirements.txt": "ca2ed115c7d5ef1c7d63e54519aa39795e35d48d74ac5e8b7be278ccc8e7f083",
   "runtime_compat.py": "88356cfde1ee32b4a9100f48ee374ed7e5ac0ba558f6a8626dde430c10b1191f",

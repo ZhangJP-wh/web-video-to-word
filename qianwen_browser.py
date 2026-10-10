@@ -269,7 +269,9 @@ def export_audio(audio, job, meta, save):
     from playwright.sync_api import sync_playwright
     from reader import ffmpeg, filename
     meta['state']='cloud_preparing';save(job/'job.json',meta)
-    upload = job/'media'/(filename(meta['title'])+'-'+job.name+'.mp3')
+    from task_numbering import numbers,document_name
+    numbered_title=document_name(numbers(job.parent.parent)[job.name],filename(meta['title']))
+    upload = job/'media'/(numbered_title+'.mp3')
     if not upload.exists():
         subprocess.run([ffmpeg(), '-nostdin', '-v', 'error', '-y', '-i', str(audio),
                         '-c:a', 'libmp3lame', '-b:a', '64k', str(upload)], check=True)
@@ -303,6 +305,7 @@ def export_audio(audio, job, meta, save):
                     from playwright.sync_api import expect
                     expect(page.get_by_role('button',name='确 认',exact=True)).to_be_enabled(timeout=120000)
                     meta['qianwen_upload_title']=upload.stem
+                    meta['qianwen_numbered_title']=True
                     meta['qianwen_submission_attempted']=True;save(job/'job.json',meta)
                     page.get_by_role('button', name='确 认', exact=True).click()
                     page.screenshot(path=str(job/'upload-confirmed.png'),full_page=True)
@@ -364,7 +367,12 @@ def delete_cloud_record(page, job, meta, save):
     if not any(meta.get(key) for key in ('qianwen_submitted','qianwen_submission_attempted','qianwen_url','qianwen_upload_confirmed')):
         meta.update(qianwen_delete_resolved=True,qianwen_delete_result='not_uploaded');save(job/'job.json',meta);return
     title=meta.get('qianwen_upload_title') or filename(meta['title'])+'-'+job.name
-    if not title.endswith('-'+job.name):raise RuntimeError('无法确认千问记录归属，未执行删除')
+    if not title.endswith('-'+job.name):
+        if not meta.get('qianwen_numbered_title'):raise RuntimeError('无法确认千问记录归属，未执行删除')
+        from task_numbering import numbers,document_name
+        expected=document_name(numbers(job.parent.parent)[job.name],filename(meta['title']))
+        if not meta.get('qianwen_numbered_title') or title!=expected:
+            raise RuntimeError('无法确认千问记录归属，未执行删除')
     require_login_if_visible(page)
     page.get_by_text('最近记录',exact=False).first.wait_for(timeout=30000)
     rows=page.locator('[data-e2e-test-id="folders_item_div"]').filter(has=page.get_by_text(title,exact=True))
