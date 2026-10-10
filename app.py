@@ -121,15 +121,30 @@ def start_title_lookup(ident, url):
 
 
 def resume_jobs():
-    # After restarting the web service, leave an existing reader process running.
-    for item in sorted(list_jobs(), key=lambda item: item['created_at']):
-        if item.get('state') not in ('completed', 'failed', 'login_required') and not (WORK/'jobs'/item['id']/'.deleting').exists():
-            pending.add(item['id'])
-            generation=__import__('uuid').uuid4().hex
-            generations[item['id']]=generation
-            tasks.put((item['id'], item['url'], generation))
-            if not item.get('title'):
-                start_title_lookup(item['id'], item['url'])
+    # Classify orphaned work for explicit restart; keep live readers untouched.
+    list_jobs()
+
+
+def classify_interrupted(folder, item):
+    if item.get('state') in ('completed','failed','login_required','interrupted') or (folder/'.deleting').exists():
+        return item
+    from runtime_compat import file_lock
+    with mutex:
+        if folder.name in pending:
+            return item
+        with (folder/'.prepare.lock').open('a') as lock:
+            try:
+                file_lock.flock(lock,file_lock.LOCK_EX | file_lock.LOCK_NB)
+            except BlockingIOError:
+                return item
+            try:
+                fresh=json.loads((folder/'job.json').read_text())
+                if fresh.get('state') not in ('completed','failed','login_required','interrupted'):
+                    fresh.update(state='interrupted',error='任务已中断，已保留处理进度。请点击“重新开始任务”。')
+                    save_json(folder/'job.json',fresh)
+                return fresh
+            finally:
+                file_lock.flock(lock,file_lock.LOCK_UN)
 
 def task_created_at(folder):
     marker = folder / '.prepare.lock'
@@ -144,7 +159,7 @@ def list_jobs():
     items = []
     for path in (WORK / 'jobs').glob('*/job.json'):
         try:
-            item = json.loads(path.read_text(encoding="utf-8"))
+            item = classify_interrupted(path.parent,json.loads(path.read_text(encoding="utf-8")))
             item['id'] = path.parent.name
             item['task_number']=numbering[item['id']]
             deletion=path.parent/'delete-result.json'

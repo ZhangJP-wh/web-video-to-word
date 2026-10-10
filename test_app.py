@@ -58,7 +58,7 @@ class PageTests(unittest.TestCase):
             job.mkdir(parents=True)
             (job / 'job.json').write_text(json.dumps({'url': 'https://example.com/v', 'state': 'queued'}), encoding="utf-8")
             (job / 'page-title.json').write_text(json.dumps({'title': '对话视频'}), encoding="utf-8")
-            with patch.object(app, 'WORK', root):
+            with patch.object(app, 'WORK', root),patch.object(app,'pending',{job.name}):
                 items = app.list_jobs()
             self.assertEqual(items[0]['title'], '对话视频')
             self.assertEqual(items[0]['state'], 'queued')
@@ -88,9 +88,24 @@ class PageTests(unittest.TestCase):
             restored = queue.Queue()
             with patch.object(app,'WORK',root), patch.object(app,'tasks',restored), patch.object(app,'pending',set()), patch('app.start_title_lookup'):
                 app.resume_jobs()
-                self.assertEqual(restored.get_nowait()[0], '000000000002')
-                self.assertEqual(restored.get_nowait()[0], '000000000001')
                 self.assertTrue(restored.empty())
+                for ident in ['000000000001','000000000002']:
+                    self.assertEqual(json.loads((root/'jobs'/ident/'job.json').read_text())['state'],'interrupted')
+
+    def test_live_reader_and_queued_tasks_are_not_interrupted(self):
+        from runtime_compat import file_lock
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);folder=root/'jobs/000000000001';folder.mkdir(parents=True)
+            record=folder/'job.json';record.write_text(json.dumps({'state':'transcribing','url':'https://example.com'}))
+            with patch.object(app,'WORK',root),patch.object(app,'pending',set()):
+                with (folder/'.prepare.lock').open('a') as lock:
+                    file_lock.flock(lock,file_lock.LOCK_EX | file_lock.LOCK_NB)
+                    self.assertEqual(app.list_jobs()[0]['state'],'transcribing')
+                    file_lock.flock(lock,file_lock.LOCK_UN)
+                with patch.object(app,'pending',{folder.name}):
+                    self.assertEqual(app.list_jobs()[0]['state'],'transcribing')
+                self.assertEqual(app.list_jobs()[0]['state'],'interrupted')
+
 
 
 class WorkerFailureTests(unittest.TestCase):
