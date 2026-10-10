@@ -143,7 +143,7 @@ def confirm_submission(page,title,job,meta,save,timeout=120000):
             if '存储已满' in body and '删除不用的记录' in body:
                 meta.update(qianwen_submission_attempted=False,qianwen_submitted=False,qianwen_upload_confirmed=False)
                 save(job/'job.json',meta)
-                raise RuntimeError('千问账号云端存储已满，请在千问中自行删除不需要的记录后重试。本机音频已保留；工具不会删除云端记录。')
+                raise RuntimeError('千问账号云端存储已满，请在千问中自行删除不需要的记录后重试。本机音频已保留；本次未删除云端记录。')
             require_cloud_available(page)
             meta['last_browser_check']=time.time();save(job/'job.json',meta)
     raise RuntimeError('千问页面未出现本次上传记录，尚未确认上传成功。已保留音频，请诊断后重试；不会重复自动上传。')
@@ -185,6 +185,7 @@ def export_audio(audio, job, meta, save):
                     (job/'upload-selected.txt').write_text(page.locator('body').inner_text())
                     from playwright.sync_api import expect
                     expect(page.get_by_role('button',name='确 认',exact=True)).to_be_enabled(timeout=120000)
+                    meta['qianwen_upload_title']=upload.stem
                     meta['qianwen_submission_attempted']=True;save(job/'job.json',meta)
                     page.get_by_role('button', name='确 认', exact=True).click()
                     page.screenshot(path=str(job/'upload-confirmed.png'),full_page=True)
@@ -238,6 +239,45 @@ def export_audio(audio, job, meta, save):
     return raw
 
 
+def delete_cloud_record(page, job, meta, save):
+    """Delete only the exact tool-uploaded title containing this task's identifier."""
+    from playwright.sync_api import expect
+    from reader import filename
+    if meta.get('qianwen_cloud_deleted'):return
+    if not any(meta.get(key) for key in ('qianwen_submitted','qianwen_submission_attempted','qianwen_url','qianwen_upload_confirmed')):
+        meta['qianwen_cloud_deleted']=True;save(job/'job.json',meta);return
+    title=meta.get('qianwen_upload_title') or filename(meta['title'])+'-'+job.name
+    if not title.endswith('-'+job.name):raise RuntimeError('无法确认千问记录归属，未执行删除')
+    require_login_if_visible(page)
+    page.get_by_text('最近记录',exact=True).wait_for(timeout=30000)
+    rows=page.locator('[data-e2e-test-id="folders_item_div"]').filter(has=page.get_by_text(title,exact=True))
+    try:expect(rows).to_have_count(1,timeout=15000)
+    except AssertionError as error:raise RuntimeError('未能唯一定位对应千问记录，未删除本机文件。记录可能已被手动删除或不在最近记录中，请检查千问页面。') from error
+    rows.locator('[data-name="action"] .ant-dropdown-trigger').click()
+    page.get_by_role('menuitem',name='删除',exact=True).click()
+    dialog=page.get_by_role('dialog').filter(has_text='确定删除本记录吗？')
+    dialog.wait_for(state='visible',timeout=10000)
+    dialog.get_by_role('button',name='确定删除',exact=True).click()
+    expect(rows).to_have_count(0,timeout=30000)
+    require_cloud_available(page)
+    meta['qianwen_cloud_deleted']=True;save(job/'job.json',meta)
+
+
+def delete_cloud(job):
+    import json
+    from reader import save_json
+    from playwright.sync_api import sync_playwright
+    meta=json.loads((job/'job.json').read_text())
+    if meta.get('qianwen_cloud_deleted'):return
+    if not any(meta.get(key) for key in ('qianwen_submitted','qianwen_submission_attempted','qianwen_url','qianwen_upload_confirmed')):
+        meta['qianwen_cloud_deleted']=True;save_json(job/'job.json',meta);return
+    with sync_playwright() as p:
+        with browser_context(p) as context:
+            page=context.pages[0] if context.pages else context.new_page()
+            page.goto(URL,wait_until='domcontentloaded')
+            delete_cloud_record(page,job,meta,save_json)
+
+
 def login(ui=False):
     from playwright.sync_api import sync_playwright
     with sync_playwright() as p:
@@ -255,5 +295,10 @@ def login(ui=False):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(); parser.add_argument('command', choices=['login','login-ui'])
-    args=parser.parse_args(); login(ui=args.command=='login-ui')
+    parser = argparse.ArgumentParser(); parser.add_argument('command', choices=['login','login-ui','delete'])
+    parser.add_argument('--job')
+    args=parser.parse_args()
+    if args.command=='delete':
+        if not args.job or not re.fullmatch('[0-9a-f]{12}',args.job):parser.error('任务编号不合法')
+        delete_cloud(ROOT/'work/jobs'/args.job)
+    else:login(ui=args.command=='login-ui')

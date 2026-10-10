@@ -135,4 +135,24 @@ class CloudErrorTests(unittest.TestCase):
         page.get_by_role.return_value.all.return_value=[success,hidden]
         require_cloud_available(page)
 
+class CloudDeleteSafetyTests(unittest.TestCase):
+    def test_rejects_record_title_without_task_identifier(self):
+        from unittest.mock import MagicMock
+        import qianwen_browser as browser
+        page=MagicMock()
+        with self.assertRaisesRegex(RuntimeError,'归属'):
+            browser.delete_cloud_record(page,Path('/tmp/123456abcdef'),{'qianwen_submitted':True,'qianwen_upload_title':'同名视频'},lambda *args:None)
+        page.get_by_role.assert_not_called()
+
+    def test_ambiguous_record_never_clicks_delete(self):
+        from unittest.mock import MagicMock,patch
+        import qianwen_browser as browser
+        page=UploadConfirmationTests().page();meta={'title':'测试','qianwen_submitted':True}
+        with patch('playwright.sync_api.expect') as expect:
+            expect.return_value.to_have_count.side_effect=AssertionError('two records')
+            with self.assertRaisesRegex(RuntimeError,'唯一定位'):
+                browser.delete_cloud_record(page,Path('/tmp/123456abcdef'),meta,lambda *args:None)
+        page.locator.return_value.filter.return_value.locator.assert_not_called()
+        self.assertFalse(meta.get('qianwen_cloud_deleted',False))
+
 if __name__=='__main__':unittest.main()

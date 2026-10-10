@@ -142,5 +142,18 @@ class LocalUploadTests(unittest.TestCase):
             with self.assertRaises(ValueError):app.receive_upload(io.BytesIO(b'abc'),3,'a.command')
             self.assertFalse((Path(tmp)/'jobs').exists())
 
+class SynchronizedDeleteTests(unittest.TestCase):
+    def test_cloud_failure_preserves_local_document_and_task(self):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as tmp:
+            work=Path(tmp);folder=work/'jobs/123456abcdef';folder.mkdir(parents=True)
+            doc=work/'keep.docx';doc.write_bytes(b'keep')
+            (folder/'job.json').write_text(json.dumps({'state':'completed','document':str(doc)}))
+            with patch.object(app,'WORK',work),patch('task_controls.reader_pids',return_value=[]),patch('task_controls.trash_task') as trash,patch('app.subprocess.run',return_value=SimpleNamespace(returncode=1,stderr='登录失效')):
+                with self.assertRaisesRegex(ValueError,'登录失效'):app.delete_task('123456abcdef')
+                trash.assert_not_called()
+            self.assertTrue(doc.exists());self.assertTrue((folder/'job.json').exists())
+            self.assertFalse((folder/'.deleting').exists())
+
 if __name__ == '__main__':
     unittest.main()

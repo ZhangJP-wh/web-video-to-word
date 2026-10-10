@@ -176,8 +176,32 @@ def delete_task(ident):
         if generation:cancelled.add((ident,generation))
         process=active_readers.get(ident,(None,None))[0]
         if process and process.poll() is None:stop_reader(process.pid)
+        folder=WORK/'jobs'/ident
+        (folder/'.deleting').touch()
+        try:
+            # Also stop readers recovered after a web-service restart.
+            from task_controls import reader_pids
+            for pid in reader_pids(ROOT,folder):stop_reader(pid)
+            import fcntl
+            with (folder/'.prepare.lock').open('a') as lock:
+                deadline=time.monotonic()+15
+                while True:
+                    try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB);break
+                    except BlockingIOError:
+                        if time.monotonic()>deadline:raise ValueError('任务尚未停止，请稍后重试删除')
+                        time.sleep(.2)
+                result=subprocess.run([str(ROOT/'.venv/bin/python'),str(ROOT/'qianwen_browser.py'),'delete','--job',ident],capture_output=True,text=True,timeout=120)
+                if result.returncode:raise ValueError('千问同步删除失败，本机任务和文稿已保留：'+(result.stderr.strip().splitlines()[-1] if result.stderr.strip() else '后台浏览器未能完成删除'))
+        except Exception as error:
+            (folder/'.deleting').unlink(missing_ok=True)
+            meta=json.loads((folder/'job.json').read_text())
+            if meta.get('state') not in ('completed','failed','login_required'):
+                meta.update(state='failed',error='任务已停止，千问同步删除未完成：'+str(error))
+                save_json(folder/'job.json',meta)
+            raise
         result=trash_task(ROOT,WORK,[OUTPUT,LEGACY_OUTPUT,ROOT/'outputs',OUTPUT.parent/'网页视频转语音文稿'],ident)
         pending.discard(ident);generations.pop(ident,None)
+        result['message']='任务与本机相关文件已移入废纸篓，对应千问记录已删除（未上传的任务无需云端删除）。'
         return result
 
 
@@ -295,7 +319,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == '/':
             return self.reply(200, (ROOT / 'index.html').read_bytes(), 'text/html; charset=utf-8')
         if self.path == '/health':
-            return self.reply(200, {'ok': True, 'project': str(ROOT), 'pid': os.getpid(), 'engines': ['qianwen'], 'task_controls': True, 'local_upload': True})
+            return self.reply(200, {'ok': True, 'project': str(ROOT), 'pid': os.getpid(), 'engines': ['qianwen'], 'task_controls': True, 'local_upload': True, 'cloud_delete': True})
         if self.path == '/qianwen/status':
             return self.reply(200, login_status())
         if self.path == '/jobs':
