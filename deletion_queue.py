@@ -5,6 +5,8 @@ from reader import save_json
 from runtime_compat import file_lock as fcntl
 
 def browser_busy(work):
+    from browser_service import endpoint
+    if endpoint():return False
     with (Path(work)/'qianwen-browser.lock').open('a') as handle:
         try:
             fcntl.flock(handle,fcntl.LOCK_EX|fcntl.LOCK_NB)

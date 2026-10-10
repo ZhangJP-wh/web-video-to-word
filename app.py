@@ -163,8 +163,6 @@ def worker():
         log=None
         try:
             folder = WORK / 'jobs' / ident
-            while deletion_queue is not None and deletion_queue.has_pending() and folder.exists() and not (folder/'.deleting').exists():
-                time.sleep(.5)
             from runtime_compat import file_lock as fcntl
             if (ident,generation) in cancelled or not folder.exists():continue
             with (folder / '.prepare.lock').open('a') as lock:
@@ -254,7 +252,15 @@ def delete_task(ident):
         return result
 
 
+auth_check_process = None
+auth_check_started = 0
+
 def login_status():
+    global auth_check_process,auth_check_started
+    if time.time()-auth_check_started>60 and (auth_check_process is None or auth_check_process.poll() is not None) and not (login_process and login_process.poll() is None):
+        auth_check_started=time.time()
+        with (WORK/"qianwen-auth-check.log").open("ab") as log:
+            auth_check_process=subprocess.Popen([str(venv_python(ROOT)),str(ROOT/"qianwen_browser.py"),"check-auth"],stdout=log,stderr=log,start_new_session=True)
     path=WORK/'qianwen-auth.json'
     state=json.loads(path.read_text(encoding="utf-8")) if path.exists() else {'status':'unknown'}
     if not state.get('last_success'):
@@ -269,11 +275,6 @@ def open_login():
     global login_process
     with mutex:
         if login_process and login_process.poll() is None:return {'ok':True,'message':'登录窗口已经打开。'}
-        lock=WORK/'qianwen-browser.lock'
-        from runtime_compat import file_lock as fcntl
-        with lock.open('a') as handle:
-            try:fcntl.flock(handle,fcntl.LOCK_EX|fcntl.LOCK_NB)
-            except BlockingIOError:raise ValueError('千问浏览器正在处理任务，请稍后再登录。')
         with (WORK/'qianwen-login.log').open('ab') as log:
             login_process=subprocess.Popen([str(venv_python(ROOT)),str(ROOT/'qianwen_browser.py'),'login-ui'],
                                            stdin=subprocess.DEVNULL,stdout=log,stderr=log,start_new_session=True)
@@ -441,6 +442,6 @@ if __name__ == '__main__':
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     get_deletion_queue()
     resume_jobs()
-    threading.Thread(target=worker, daemon=True).start()
+    for _ in range(2):threading.Thread(target=worker, daemon=True).start()
     print(f'网页视频转语音识别文字稿（由千问提供支持）：http://{HOST}:{PORT}', flush=True)
     server.serve_forever()

@@ -87,19 +87,66 @@ def require_cloud_available(page):
         raise RuntimeError('千问页面提示：'+'；'.join(messages)+'。本机文件已保留，请处理后重试。')
 
 
+class TaskContext:
+    def __init__(self,context):
+        self.page=context.new_page()
+        self.pages=[self.page]
+        session=context.new_cdp_session(self.page)
+        target=session.send("Target.getTargetInfo")["targetInfo"]["targetId"]
+        session.detach()
+        self.owner=ROOT/"work/browser-page-owners"/target
+        self.owner.parent.mkdir(exist_ok=True)
+        self.owner.write_text(str(os.getpid()))
+
 @contextmanager
 def browser_context(playwright, headed=False):
-    from runtime_compat import file_lock as fcntl
+    from browser_service import endpoint
+    from runtime_compat import venv_python,file_lock as fcntl
     PROFILE.mkdir(parents=True, exist_ok=True)
+    if not headed:
+        if not endpoint():
+            with (ROOT/'work/browser-service.log').open('ab') as log:
+                subprocess.Popen([str(venv_python(ROOT)),str(ROOT/'browser_service.py')],stdout=log,stderr=log,start_new_session=True)
+            for _ in range(40):
+                if endpoint():break
+                time.sleep(.25)
+        address=endpoint()
+        if not address:raise RuntimeError('千问浏览器正在使用中，请关闭登录窗口或稍后重试。')
+        browser=playwright.chromium.connect_over_cdp(address)
+        task=TaskContext(browser.contexts[0])
+        try:yield task
+        finally:
+            try:
+                task.page.close()
+                task.owner.unlink(missing_ok=True)
+            finally:browser.close() # CDP disconnect; shared browser stays alive.
+        return
+    address=endpoint()
+    if address:
+        browser=playwright.chromium.connect_over_cdp(address)
+        if len(browser.contexts[0].pages)>1:
+            browser.close()
+            raise RuntimeError('后台任务仍在使用千问，请等待当前操作完成后登录。')
+        browser.new_browser_cdp_session().send('Browser.close')
+        browser.close()
+        time.sleep(1)
     with (ROOT/'work/qianwen-browser.lock').open('a') as lock:
         try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
         except BlockingIOError:raise RuntimeError('千问浏览器正在使用中，请关闭登录窗口或等待任务完成后再试。')
-        context=playwright.chromium.launch_persistent_context(str(PROFILE), headless=not headed,
-                     accept_downloads=True,viewport={'width':1920,'height':1600})
+        context=playwright.chromium.launch_persistent_context(str(PROFILE),headless=False,accept_downloads=True,viewport={'width':1920,'height':1600})
         try:yield context
-        finally:
-            try:context.close()
-            except Exception:pass
+        finally:context.close()
+
+def check_auth():
+    from playwright.sync_api import sync_playwright
+    with sync_playwright() as p:
+        with browser_context(p) as context:
+            page=context.pages[0];page.goto(URL,wait_until='domcontentloaded')
+            page.wait_for_timeout(1500)
+            require_login_if_visible(page)
+            page.get_by_text('中英文自由说',exact=True).wait_for(timeout=30000)
+            require_login_if_visible(page)
+            auth_state('valid')
 
 
 def export_with_retry(audio, job, meta, save):
@@ -302,19 +349,25 @@ def login(ui=False):
             page.goto(URL)
             if ui:
                 while not page.is_closed():
-                    try:page.wait_for_timeout(500)
+                    try:
+                        require_login_if_visible(page)
+                        if page.get_by_text('中英文自由说',exact=True).is_visible():auth_state('valid')
+                        page.wait_for_timeout(500)
+                    except LoginRequired:page.wait_for_timeout(500)
                     except Exception:break
-                auth_state('unknown')
             else:
                 input('请在专用浏览器中登录千问，确认音视频速读页面可用后，在此按回车保存登录。')
     print('登录环境已保存在本机。后台任务不会打开此浏览器窗口。')
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(); parser.add_argument('command', choices=['login','login-ui','delete'])
+    parser = argparse.ArgumentParser(); parser.add_argument('command', choices=['login','login-ui','delete','check-auth'])
     parser.add_argument('--job')
     args=parser.parse_args()
-    if args.command=='delete':
+    if args.command=='check-auth':
+        try:check_auth()
+        except LoginRequired:pass
+    elif args.command=='delete':
         if not args.job or not re.fullmatch('[0-9a-f]{12}',args.job):parser.error('任务编号不合法')
         delete_cloud(ROOT/'work/jobs'/args.job)
     else:login(ui=args.command=='login-ui')
