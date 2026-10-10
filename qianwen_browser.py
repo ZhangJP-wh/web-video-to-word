@@ -45,6 +45,14 @@ class LoginRequired(RuntimeError):
     pass
 
 
+def upload_failure_message(state, message):
+    """Suggest login only for unconfirmed uploads; never claim expiry without evidence."""
+    if state in ('cloud_connecting', 'cloud_uploading', 'cloud_confirming_upload'):
+        if not re.search('存储已满|超限|不足|限制|不翻译|500MB|6小时|登录', message):
+            return message + '\n可能千问未登录或登录已失效，请点击“登录或打开千问”，确认登录后重试。若已登录，请检查上方具体错误原因。'
+    return message
+
+
 def auth_state(status):
     from reader import save_json
     path=ROOT/'work/qianwen-auth.json'
@@ -59,12 +67,12 @@ def require_login_if_visible(page):
     for prompt in prompts.all():
         if prompt.is_visible():
             auth_state('required')
-            raise LoginRequired('千问需要重新登录或完成验证。请点击页面上的“登录千问”，完成后重试任务。')
+            raise LoginRequired('千问需要重新登录或完成验证。请点击页面上的“登录或打开千问”，完成后重试任务。')
     buttons=[button for name in ('登录','登录/注册','立即登录')
              for button in page.get_by_role('button',name=name,exact=True).all()]
     if any(button.is_visible() for button in buttons):
         auth_state('required')
-        raise LoginRequired('千问登录已失效，请点击“登录千问”重新登录后重试。')
+        raise LoginRequired('千问未登录或登录已失效，请点击“登录或打开千问”完成登录后重试。')
 
 
 def require_cloud_available(page):
@@ -171,7 +179,8 @@ def export_audio(audio, job, meta, save):
                 try:
                     page.get_by_text('中英文自由说', exact=True).wait_for(timeout=30000)
                 except Exception as error:
-                    raise RuntimeError('千问需要登录或页面无法访问。请运行“配置千问登录.command”。') from error
+                    require_login_if_visible(page)
+                    raise RuntimeError('千问上传页面未加载完成，可能千问未登录或页面无法访问。请点击“登录或打开千问”，确认登录后重试。') from error
                 page.get_by_text('中英文自由说', exact=True).click()
                 page.get_by_text('多人讨论', exact=True).click()
                 if not page.get_by_text('不翻译', exact=True).is_visible():

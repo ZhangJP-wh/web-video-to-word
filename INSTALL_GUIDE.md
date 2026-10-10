@@ -17,7 +17,7 @@
 
 ## 登录与删除
 
-页面上有标题旁蓝色“登录或打开千问”按钮。识别任务检测到登录失效后显示需要重新登录；点击按钮登录、关闭登录窗口，再点击重试。空闲时不保证实时发现过期，也不会主动抢占屏幕。
+页面上有标题旁蓝色“登录或打开千问”按钮。识别任务检测到登录失效后显示需要重新登录；点击按钮登录、关闭登录窗口，再点击重试。空闲时不保证实时发现过期，也不会主动抢占屏幕。 首次使用会提示可能未登录；上传或确认上传失败时，在保留具体错误的同时提示可能未登录，建议点击“登录或打开千问”确认后重试。明确的存储或额度限制仍显示原原因，不误报为登录失效。
 
 已完成任务的“删除任务并同步到千问”与“查看 Word 文稿”“打开文档所在位置”同排，不再提供重复下载按钮。每条任务的“删除任务并同步到千问”会停止该任务，将相关本机文件、已完成和未完成 Word、任务记录移入废纸篓；点击“删除任务并同步到千问”会删除对应千问记录，云端删除后无法恢复。删除结果逐项列出工具任务记录、本机文稿及任务文件、对应千问记录，每项成功显示绿色、失败显示红色；千问记录未找到而按成功处理时显示绿色并注明情况。绿色成功提示在卡片消失后显示3秒自动清空；红色失败提示保留；失败原因保留在任务卡片并随刷新显示。成功删除后任务卡片立即从工具列表消失，旧的刷新结果不会把卡片重新显示。云端删除失败则保留本机任务和文稿，提示原因后可重试；未上传的任务只清理本机。仅删除含本工具任务编号且唯一匹配的记录，千问未找到对应记录时仍清理本机，整体按成功处理，并明确注明未找到、未执行云端删除；多个匹配记录或页面/登录异常仍视为失败。模型和登录信息不会上传 GitHub。
 
@@ -82,7 +82,7 @@
 
 ## 验证说明
 
-本次 48 项测试通过，其中云端识别返回结果在单元测试中模拟；旧本地推理断点测试已移除。此前本机20秒音频的千问后台完整流程约46秒，不能推断长视频速度或识别准确率。未在另一台全新 Mac 完成安装实测。
+本次 50 项测试通过，其中云端识别返回结果在单元测试中模拟；旧本地推理断点测试已移除。此前本机20秒音频的千问后台完整流程约46秒，不能推断长视频速度或识别准确率。未在另一台全新 Mac 完成安装实测。
 
 ## 主要文件
 
@@ -660,7 +660,7 @@ function showDeletionResult(result,success){clearTimeout(deleteNoticeTimer);msg.
 const deletedTaskIds=new Set();const deletionResults=new Map();let refreshSequence=0;
 async function requireControls(){let h=await(await fetch('/health')).json();if(!h.task_controls)throw Error('请双击“加载本次更新.command”，让网页服务加载登录和删除功能。')}
 document.querySelector('#qianwen-login').onclick=async()=>{try{await requireControls();let r=await post('/qianwen/login',{});msg.textContent=r.message}catch(e){msg.textContent=e.message}};
-async function refreshLogin(){try{let h=await(await fetch('/health')).json();if(!h.task_controls){document.querySelector('#login-status').textContent='新功能需要加载本次更新';return}let s=await(await fetch('/qianwen/status')).json();let text=s.window_open?'请在千问窗口中完成登录，完成后关闭窗口':s.status==='required'?'千问需要重新登录，请点击标题旁的“登录或打开千问”按钮':s.last_success?'最近成功转写：'+new Date(s.last_success*1000).toLocaleString()+'；任务中会继续验证登录':'登录状态待验证；首次使用请点击“登录或打开千问”';document.querySelector('#login-status').textContent=s.error||text}catch(e){document.querySelector('#login-status').textContent='暂时无法读取登录状态'}}
+async function refreshLogin(){try{let h=await(await fetch('/health')).json();if(!h.task_controls){document.querySelector('#login-status').textContent='新功能需要加载本次更新';return}let s=await(await fetch('/qianwen/status')).json();let text=s.window_open?'请在千问窗口中完成登录，完成后关闭窗口':s.status==='required'?'千问需要重新登录，请点击标题旁的“登录或打开千问”按钮':s.last_success?'最近成功转写：'+new Date(s.last_success*1000).toLocaleString()+'；任务中会继续验证登录':'登录状态待验证，可能千问未登录；首次使用请点击“登录或打开千问”完成登录';document.querySelector('#login-status').textContent=s.error||text}catch(e){document.querySelector('#login-status').textContent='暂时无法读取登录状态'}}
 async function post(url,data){let r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});let j=await r.json();if(!r.ok){let error=Error(j.error);error.deletionResult=j.deletion_result;throw error}return j}
 let selectedFile=null;
 const zone=document.querySelector('#upload-zone'),picker=document.querySelector('#media-file'),urlInput=document.querySelector('#url');
@@ -894,6 +894,14 @@ class LoginRequired(RuntimeError):
     pass
 
 
+def upload_failure_message(state, message):
+    """Suggest login only for unconfirmed uploads; never claim expiry without evidence."""
+    if state in ('cloud_connecting', 'cloud_uploading', 'cloud_confirming_upload'):
+        if not re.search('存储已满|超限|不足|限制|不翻译|500MB|6小时|登录', message):
+            return message + '\n可能千问未登录或登录已失效，请点击“登录或打开千问”，确认登录后重试。若已登录，请检查上方具体错误原因。'
+    return message
+
+
 def auth_state(status):
     from reader import save_json
     path=ROOT/'work/qianwen-auth.json'
@@ -908,12 +916,12 @@ def require_login_if_visible(page):
     for prompt in prompts.all():
         if prompt.is_visible():
             auth_state('required')
-            raise LoginRequired('千问需要重新登录或完成验证。请点击页面上的“登录千问”，完成后重试任务。')
+            raise LoginRequired('千问需要重新登录或完成验证。请点击页面上的“登录或打开千问”，完成后重试任务。')
     buttons=[button for name in ('登录','登录/注册','立即登录')
              for button in page.get_by_role('button',name=name,exact=True).all()]
     if any(button.is_visible() for button in buttons):
         auth_state('required')
-        raise LoginRequired('千问登录已失效，请点击“登录千问”重新登录后重试。')
+        raise LoginRequired('千问未登录或登录已失效，请点击“登录或打开千问”完成登录后重试。')
 
 
 def require_cloud_available(page):
@@ -1020,7 +1028,8 @@ def export_audio(audio, job, meta, save):
                 try:
                     page.get_by_text('中英文自由说', exact=True).wait_for(timeout=30000)
                 except Exception as error:
-                    raise RuntimeError('千问需要登录或页面无法访问。请运行“配置千问登录.command”。') from error
+                    require_login_if_visible(page)
+                    raise RuntimeError('千问上传页面未加载完成，可能千问未登录或页面无法访问。请点击“登录或打开千问”，确认登录后重试。') from error
                 page.get_by_text('中英文自由说', exact=True).click()
                 page.get_by_text('多人讨论', exact=True).click()
                 if not page.get_by_text('不翻译', exact=True).is_visible():
@@ -1342,8 +1351,8 @@ def prepare(args):
             build_document(job, raw)
             print(f'Word 已生成：{job}', flush=True)
         except Exception as error:
-            from qianwen_browser import LoginRequired
-            message=str(error)
+            from qianwen_browser import LoginRequired, upload_failure_message
+            message=upload_failure_message(meta.get('state'),str(error))
             if 'Fresh cookies' in message and 'Douyin' in message:
                 message='抖音限制了自动下载，需要有效的抖音浏览器 Cookie。精选页链接已转换成单视频地址，但尚未下载成功；千问转写尚未开始。'
             meta.update(state='login_required' if isinstance(error,LoginRequired) else 'failed', error=message)
@@ -1927,6 +1936,21 @@ from docx import Document
 from qianwen_browser import read_export
 
 class QianwenExportTests(unittest.TestCase):
+    def test_unconfirmed_upload_suggests_login_and_preserves_cause(self):
+        from qianwen_browser import upload_failure_message
+        for state in ('cloud_connecting','cloud_uploading','cloud_confirming_upload'):
+            message=upload_failure_message(state,'上传按钮等待超时')
+            self.assertIn('上传按钮等待超时',message)
+            self.assertIn('可能千问未登录',message)
+            self.assertIn('登录或打开千问',message)
+
+    def test_explicit_other_failures_do_not_suggest_login(self):
+        from qianwen_browser import upload_failure_message
+        for message in ('千问账号云端存储已满','超过500MB限制','千问需要登录'):
+            self.assertEqual(upload_failure_message('cloud_uploading',message),message)
+        for state in ('downloading','cloud_preparing','cloud_transcribing','generating_document'):
+            self.assertEqual(upload_failure_message(state,'失败'),'失败')
+
     def export(self, lines):
         temp=tempfile.TemporaryDirectory();self.addCleanup(temp.cleanup)
         path=Path(temp.name)/'export.docx';doc=Document()
@@ -2439,10 +2463,10 @@ exit $result
 ```text
 {
   "test_reader.py": "dcbf181640b381f6d7ab81497b5fc8779ea88ae203dfb4181eb00861aaf044f5",
-  "qianwen_browser.py": "4042b5e64acb95f87c8be2de002b46d52bc172a5b833877e23d397e06fd296f7",
+  "qianwen_browser.py": "3cbbce123639ac83a41b286b9ad75011d41f503d5a00a87ee987fe790205b57f",
   "测试千问后台流程.command": "365ea7c455b38238341c79e3f2db6531de8053c34a909c4a210a19248a680c8c",
   "smoke_qianwen.py": "5a41ae58b74a8f2edaaadeb36c60235646989c5bdb2aa49e17d72dfd8778f71e",
-  "index.html": "a5ae1e8ce64032d6ee744fa81e4649a13041f0f281b911cf52db48cbb0c38add",
+  "index.html": "6dd9e443ec67aed7db67deeaec104d47a4306608018c1e71e02dd4de2d5590b2",
   "停用自动启动.command": "0c2353cd41fd56b737864d09d6fe83f8b7d62cc1c51757e86fe0bc6bbd76b682",
   "launch_service.py": "2cadb70ee153b678af24a6eb9e911d7e6e2ae4906ca8d3115ff8bb723d516dba",
   "requirements.txt": "8f1f858b32310780d785ef1d196205c8c85a0c44efbb9fe4124bf7e98c9a96d3",
@@ -2450,7 +2474,7 @@ exit $result
   "首次安装.command": "3386934c6c62f0983f9d9ee8541bf0d73a4fa671be319201efa649bf71c28d32",
   "task_controls.py": "a420be2ff8a6b4fc833d126f235e8a249c521e2a8c30435b36ebdf7426579084",
   "test_task_controls.py": "2a0d1da5b7de5a52a5d3c0257dd989341bccf00ba3cda5fd57fe98db25842644",
-  "reader.py": "1b32092e273dcf8847b30c1ab80fc5597d12ff5ca5c69e35172c9cdbe7be406f",
+  "reader.py": "e352d9bc677f1547781028ce6df00266095c713fc91787fa4a9676cb6f3d0e21",
   "切换千问并清理本地模型.command": "39ae5c718d5854f9fec85e13cd2c6fc683cb3c07844dffdd29697f97cfeeaaf4",
   "smoke_qianwen_runner.py": "10c6047ad2b7ae20cac3945b41f8afdc047975fd2da3ef0dc576f3753a512409",
   "cloud_migration.py": "cc5c02b953f404a280f0230e836ff9a5fe04f3e7002361ef9b8b8cdc244c07a0",
@@ -2459,7 +2483,7 @@ exit $result
   "加载本次更新.command": "ceabb97ebf2b3d7df5568844de02733bc9e09f9c877621985bdaf801a182b978",
   "配置千问登录.command": "3bc9b14516ab4c169b0cd7a9c595778965167f7f7ce533eab5ad7b3abd835fac",
   "install.py": "837ca16dea4cc1b6c258f5effb2eea8953577857a00a4b9b927624aff8a146e8",
-  "test_qianwen.py": "47ba77b258ba4fb918fdc390419931c05fa9da14a7483cdad91f83e812ffdcda",
+  "test_qianwen.py": "9fb2902cabfbb02f36b5ce3bed5c96205ba05b6b390833cae97e10ecafd78473",
   "check_recovery.py": "7fb929eabc113b13551764fe57caa4f72e7f37f6cded04a75c590fe54e1a3d2d",
   "启用自动启动.command": "3475ec88b5c035f49adc0a13b3a14a09255ca19aa600a750051f6a8f1d8a07b6",
   "test_app.py": "e850e10b4e8414ef683b73076e73d10e39b5837125edfd82f97af9a8cbb781ab"

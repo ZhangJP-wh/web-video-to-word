@@ -5,6 +5,21 @@ from docx import Document
 from qianwen_browser import read_export
 
 class QianwenExportTests(unittest.TestCase):
+    def test_unconfirmed_upload_suggests_login_and_preserves_cause(self):
+        from qianwen_browser import upload_failure_message
+        for state in ('cloud_connecting','cloud_uploading','cloud_confirming_upload'):
+            message=upload_failure_message(state,'上传按钮等待超时')
+            self.assertIn('上传按钮等待超时',message)
+            self.assertIn('可能千问未登录',message)
+            self.assertIn('登录或打开千问',message)
+
+    def test_explicit_other_failures_do_not_suggest_login(self):
+        from qianwen_browser import upload_failure_message
+        for message in ('千问账号云端存储已满','超过500MB限制','千问需要登录'):
+            self.assertEqual(upload_failure_message('cloud_uploading',message),message)
+        for state in ('downloading','cloud_preparing','cloud_transcribing','generating_document'):
+            self.assertEqual(upload_failure_message(state,'失败'),'失败')
+
     def export(self, lines):
         temp=tempfile.TemporaryDirectory();self.addCleanup(temp.cleanup)
         path=Path(temp.name)/'export.docx';doc=Document()
