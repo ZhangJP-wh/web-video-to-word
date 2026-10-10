@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>音视频文稿</title>
+<style>
+body{font:16px/1.7 -apple-system,BlinkMacSystemFont,sans-serif;color:#24322d;background:#f4f6f3;max-width:920px;margin:48px auto;padding:0 24px}h1{font-size:32px}input,button,.action{font:inherit;padding:10px 14px;border:1px solid #c6d1ca;border-radius:8px}input[type=url]{flex:1;min-width:180px}button,.action{background:#245441;color:white;cursor:pointer;text-decoration:none;display:inline-block}form,.actions{display:flex;gap:12px;flex-wrap:wrap}article{background:white;padding:24px;border:1px solid #e0e7e1;border-radius:12px;margin:20px 0}small{color:#62736b}a{color:#245441}#message{color:#8b4520}.notice{background:#fff3cd;color:#9c0006;padding:14px 18px;border-left:4px solid #b07800;font-weight:bold}.secondary{background:white;color:#245441}
+</style>
+<h1>音视频文稿</h1>
+<p>粘贴网页链接，后台下载并用 Qwen3-ASR-1.7B 识别语音，自动区分发言人，生成带时间戳、以视频标题命名的 Word。</p>
+<form id="form"><input id="url" aria-label="音视频网页链接" type="url" required placeholder="粘贴 YouTube、哔哩哔哩等音视频网页链接"><button>开始生成文稿</button></form>
+<p id="message" role="status"></p>
+<p class="notice">本文稿内容为语音模型识别结果，需要注意：可能有错别字和识别不准确之处。</p>
+<p><small>Word 保存到“下载/网页视频转语音文稿”。无需提交给其他 AI；完成后直接查看或打开所在位置。Word 完整性检查通过后自动将原音视频移入废纸篓并清理临时音轨。</small></p>
+<div id="jobs"></div>
+<script>
+const historicalTaskTimes={};
+const stages={queued:'排队中',downloading:'正在下载',downloaded:'下载完成',diarizing:'本地模型正在区分发言人',transcribing:'本地模型正在识别语音',completed:'Word 已生成，可以查看',failed:'处理失败，进度已保留'};
+const msg=document.querySelector('#message');
+async function post(url,data){let r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});let j=await r.json();if(!r.ok)throw Error(j.error);return j}
+document.querySelector('#form').onsubmit=async e=>{e.preventDefault();try{await post('/jobs',{url:document.querySelector('#url').value});msg.textContent='已加入后台队列。你可以继续做其他事情，稍后回来查看文稿。';await refresh()}catch(e){msg.textContent=e.message}};
+function link(text,url,style){let a=document.createElement('a');a.textContent=text;a.href=url;if(style)a.className=style;return a}
+async function refresh(){try{let jobs=await(await fetch('/jobs')).json();jobs.sort((a,b)=>(b.created_at??historicalTaskTimes[b.id]??b.added_at??Infinity)-(a.created_at??historicalTaskTimes[a.id]??a.added_at??Infinity));let host=document.querySelector('#jobs');host.replaceChildren();for(let j of jobs){let card=document.createElement('article');let h=document.createElement('h2');h.textContent=j.title||'待处理音视频';card.append(h);let p=document.createElement('p');p.textContent=(j.document&&!j.has_document)?'Word 文件已不在原保存位置，重新提交链接可生成':(stages[j.state]||'准备生成文稿');if(j.state==='transcribing'&&j.transcribed_seconds)p.textContent+=' · '+Math.floor(j.transcribed_seconds/60)+' / '+Math.ceil(j.audio_duration/60)+' 分钟';card.append(p);card.append(link('原网页',j.url));if(j.error){let err=document.createElement('p');err.textContent=j.error;card.append(err)}if(j.cleanup_error){let note=document.createElement('p');note.textContent='Word 已生成，但部分临时文件未清理：'+j.cleanup_error;card.append(note)}if(j.has_document){let actions=document.createElement('p');actions.className='actions';actions.append(link('查看 Word 文稿','/preview/'+j.id,'action'));let reveal=document.createElement('button');reveal.className='secondary';reveal.textContent='打开文档所在位置';reveal.onclick=async()=>{try{await post('/reveal/'+j.id,{});msg.textContent='已在 Finder 中显示该 Word 文件。'}catch(e){msg.textContent=e.message}};actions.append(reveal);let download=link('下载 Word','/document/'+j.id,'action secondary');download.download=j.name+'.docx';actions.append(download);card.append(actions);let note=document.createElement('small');note.textContent=j.temporary_files_removed?(j.media_trashed?'原音视频已移入废纸篓，临时音轨已清理。':'原音视频与临时音轨已清理。'):'Word 内容未经人工校对。';card.append(note)}host.append(card)}}catch(e){msg.textContent='后台连接中断，请重新启动工具。'}}
+refresh();setInterval(refresh,6000);
+</script></html>
