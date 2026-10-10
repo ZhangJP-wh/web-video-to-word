@@ -430,6 +430,10 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == '/jobs':
                 if not isinstance(data.get('url'),str):raise ValueError('请提交有效的网页链接')
                 return self.reply(200, {'id': enqueue(data['url'].strip(), 'qianwen')})
+            verification=re.fullmatch(r'/youtube/confirm/([0-9a-f]{12})',self.path)
+            if verification:
+                from youtube_verification import confirm
+                return self.reply(200,confirm(WORK/'jobs'/verification.group(1)))
             if self.path == '/qianwen/login':
                 return self.reply(200, open_login())
             deletion=re.fullmatch(r'/delete/([0-9a-f]{12})',self.path)

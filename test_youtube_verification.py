@@ -17,3 +17,12 @@ class VerificationTests(unittest.TestCase):
     args=launch.call_args.args[0]
     self.assertFalse(any('remote-debugging' in arg or 'enable-automation' in arg for arg in args))
     self.assertTrue(any('youtube-manual-chrome' in arg for arg in args))
+
+ def test_confirmation_only_for_waiting_task(self):
+  import tempfile,json
+  from pathlib import Path
+  from youtube_verification import confirm
+  with tempfile.TemporaryDirectory() as tmp:
+   job=Path(tmp);(job/'job.json').write_text(json.dumps({'state':'youtube_verifying'}));self.assertTrue(confirm(job)['ok']);self.assertTrue((job/'youtube-verification-confirmed').exists())
+   (job/'job.json').write_text(json.dumps({'state':'completed'}))
+   with self.assertRaises(ValueError):confirm(job)

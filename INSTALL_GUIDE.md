@@ -188,6 +188,8 @@ YouTube要求登录或人机验证时，会打开隔离的专用浏览器窗口�
 
 YouTube人工登录窗口使用已安装的正式版Chrome直接启动，不由Playwright控制，也不启用调试接口。专用配置与日常Chrome隔离；完成后关闭专用窗口，后台仅读取该专用配置的Cookie。系统可能要求授权访问Chrome加密凭据；登录成功仍不保证YouTube允许下载。
 
+等待YouTube人工验证时，任务卡显示“已关闭验证弹窗，重新开始任务”。完成验证并关闭专用窗口后点击它，通知原任务继续，不重复排队；Chrome仍有后台进程时也可确认。
+
 ## 仅收到本文档：完整源码
 
 AI Agent 可按 FILE 标记逐个提取文件，再核对文件校验.json；运行 `bash install.sh`。仅提取这里列出的公开源码，不迁移他人的登录资料。
@@ -642,6 +644,10 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == '/jobs':
                 if not isinstance(data.get('url'),str):raise ValueError('请提交有效的网页链接')
                 return self.reply(200, {'id': enqueue(data['url'].strip(), 'qianwen')})
+            verification=re.fullmatch(r'/youtube/confirm/([0-9a-f]{12})',self.path)
+            if verification:
+                from youtube_verification import confirm
+                return self.reply(200,confirm(WORK/'jobs'/verification.group(1)))
             if self.path == '/qianwen/login':
                 return self.reply(200, open_login())
             deletion=re.fullmatch(r'/delete/([0-9a-f]{12})',self.path)
@@ -1019,7 +1025,7 @@ function taskHeading(j){return (j.task_number?j.task_number+' - ':'')+unnumbered
 function unnumberedHeading(j){let title=j.title;if(j.state==='queued')return '待处理 · '+(title||'正在获取标题（'+new URL(j.url).hostname+' / '+(new URL(j.url).searchParams.get('v')||new URL(j.url).pathname.split('/').filter(Boolean).pop()||j.id)+'）');return title||'正在获取标题 · '+j.id}
 function link(text,url,style){let a=document.createElement('a');a.textContent=text;a.href=url;if(style)a.className=style;return a}
 async function refreshDeletions(){try{let r=await fetch('/deletions');if(!r.ok)return;let reports=await r.json();for(let [id,report] of Object.entries(reports)){if(report.status==='pending'){deletionResults.set(id,report)}else if(deletionResults.get(id)?.status==='pending'){if(report.status==='success'){deletedTaskIds.add(id);deletionResults.delete(id);showDeletionResult(report,true)}else{deletionResults.set(id,report);showDeletionResult(report,false)}}}}catch(e){}}
-async function refresh(){const sequence=++refreshSequence;try{await refreshDeletions();let jobs=await(await fetch('/jobs')).json();if(sequence!==refreshSequence)return;jobs=jobs.filter(j=>!deletedTaskIds.has(j.id));jobs.sort((a,b)=>a.task_number&&b.task_number?b.task_number-a.task_number:(b.created_at??historicalTaskTimes[b.id]??b.added_at??Infinity)-(a.created_at??historicalTaskTimes[a.id]??a.added_at??Infinity));let host=document.querySelector('#jobs');host.replaceChildren();for(let j of jobs){let card=document.createElement('article');card.dataset.taskId=j.id;let h=document.createElement('h2');h.textContent=taskHeading(j);card.append(h);let p=document.createElement('p');p.textContent=(j.document&&!j.has_document)?'Word 文件已不在原保存位置，重新提交链接可生成':(stages[j.state]||'状态暂未识别：'+String(j.state));card.append(p);if(j.source_kind==='local'){let source=document.createElement('p');source.textContent=j.source_label;card.append(source)}else card.append(link('原网页',j.url));let deletion=deletionResults.get(j.id)||j.deletion_result;if(deletion){let status=document.createElement('p');status.className='delete-result';status.setAttribute('role','alert');status.style.color=deletion.status==='failed'?'#a52222':'#8b4520';renderDeletionResult(status,deletion);card.append(status)}if(j.error){let err=document.createElement('p');err.textContent=j.error;card.append(err)}if(j.cleanup_error){let note=document.createElement('p');note.textContent='Word 已生成，但部分临时文件未清理：'+j.cleanup_error;card.append(note)}if(j.has_document){let actions=document.createElement('p');actions.className='actions';actions.append(link('查看 Word 文稿','/preview/'+j.id,'action'));let reveal=document.createElement('button');reveal.type='button';reveal.className='secondary';reveal.textContent='打开文档所在位置';let revealStatus=document.createElement('small');revealStatus.setAttribute('role','status');reveal.onclick=async()=>{reveal.disabled=true;revealStatus.textContent='正在打开文件夹…';try{await post('/reveal/'+j.id,{});revealStatus.textContent='已打开 Finder 文件夹。';msg.textContent='已打开文档所在的 Finder 文件夹。'}catch(e){revealStatus.textContent='打开失败：'+e.message;msg.textContent='打开失败：'+e.message}finally{reveal.disabled=false}};actions.append(reveal);actions.append(revealStatus);card.append(actions);let note=document.createElement('small');note.textContent=j.temporary_files_removed?(j.media_trashed?'原音视频已移入废纸篓，临时音轨已清理。':'原音视频与临时音轨已清理。'):'Word 内容未经人工校对。';card.append(note)}let controls=document.createElement('p');controls.className='actions';if(j.state==='failed'||j.state==='login_required'){let retry=document.createElement('button');retry.textContent='重试任务';retry.className='retry-task';retry.onclick=async()=>{try{await post('/jobs',{url:j.url,engine:'qianwen'});await refresh()}catch(e){msg.textContent=e.message}};controls.append(retry)}let remove=document.createElement('button');remove.type='button';remove.className='secondary';remove.style.color='#a52222';remove.textContent='删除任务并同步到千问';if(deletion?.status==='pending'){remove.disabled=true;remove.textContent='正在同步删除…'}remove.onclick=async()=>{if(!confirm('删除“'+(j.title||j.id)+'”？将停止该任务，把本机任务文件和相关文稿移入废纸篓。同时删除对应的千问云端记录，云端删除后无法恢复。'))return;deletionResults.set(j.id,{status:'pending',message:'正在删除并同步到千问，请稍候…'});msg.className='';msg.textContent='正在删除并同步到千问，请稍候…';remove.disabled=true;remove.textContent='正在同步删除…';try{let health=await(await fetch('/health')).json();if(!health.cloud_delete)throw Error('请先双击加载本次更新.command启用千问同步删除');await requireControls();let r=await post('/delete/'+j.id,{});if(r.deletion_result?.status==='pending'){deletionResults.set(j.id,r.deletion_result);msg.className='';renderDeletionResult(msg,r.deletion_result);await refresh();return}deletedTaskIds.add(j.id);++refreshSequence;document.querySelectorAll('article[data-task-id="'+j.id+'"]').forEach(node=>node.remove());deletionResults.delete(j.id);showDeletionResult(r.deletion_result||{status:'success',message:r.message},true);await refresh()}catch(e){let message=e.deletionResult?.message||('删除失败\n工具任务列表记录：未删除成功\n本机文稿及任务文件：未确认删除成功\n对应的千问记录：未确认删除成功\n原因：'+e.message);let report=e.deletionResult||{status:'failed',message};deletionResults.set(j.id,report);showDeletionResult(report,false);let status=card.querySelector('.delete-result');if(!status){status=document.createElement('p');status.className='delete-result';status.setAttribute('role','alert');card.append(status)}status.style.color='#a52222';renderDeletionResult(status,report);remove.disabled=false;remove.textContent='删除任务并同步到千问'}};if(j.has_document){card.querySelector('.actions').append(remove)}else{controls.append(remove)}if(controls.children.length)card.append(controls);host.append(card)}await refreshLogin()}catch(e){msg.textContent='后台连接中断，请重新启动工具。'}}
+async function refresh(){const sequence=++refreshSequence;try{await refreshDeletions();let jobs=await(await fetch('/jobs')).json();if(sequence!==refreshSequence)return;jobs=jobs.filter(j=>!deletedTaskIds.has(j.id));jobs.sort((a,b)=>a.task_number&&b.task_number?b.task_number-a.task_number:(b.created_at??historicalTaskTimes[b.id]??b.added_at??Infinity)-(a.created_at??historicalTaskTimes[a.id]??a.added_at??Infinity));let host=document.querySelector('#jobs');host.replaceChildren();for(let j of jobs){let card=document.createElement('article');card.dataset.taskId=j.id;let h=document.createElement('h2');h.textContent=taskHeading(j);card.append(h);let p=document.createElement('p');p.textContent=(j.document&&!j.has_document)?'Word 文件已不在原保存位置，重新提交链接可生成':(stages[j.state]||'状态暂未识别：'+String(j.state));card.append(p);if(j.source_kind==='local'){let source=document.createElement('p');source.textContent=j.source_label;card.append(source)}else card.append(link('原网页',j.url));let deletion=deletionResults.get(j.id)||j.deletion_result;if(deletion){let status=document.createElement('p');status.className='delete-result';status.setAttribute('role','alert');status.style.color=deletion.status==='failed'?'#a52222':'#8b4520';renderDeletionResult(status,deletion);card.append(status)}if(j.error){let err=document.createElement('p');err.textContent=j.error;card.append(err)}if(j.cleanup_error){let note=document.createElement('p');note.textContent='Word 已生成，但部分临时文件未清理：'+j.cleanup_error;card.append(note)}if(j.has_document){let actions=document.createElement('p');actions.className='actions';actions.append(link('查看 Word 文稿','/preview/'+j.id,'action'));let reveal=document.createElement('button');reveal.type='button';reveal.className='secondary';reveal.textContent='打开文档所在位置';let revealStatus=document.createElement('small');revealStatus.setAttribute('role','status');reveal.onclick=async()=>{reveal.disabled=true;revealStatus.textContent='正在打开文件夹…';try{await post('/reveal/'+j.id,{});revealStatus.textContent='已打开 Finder 文件夹。';msg.textContent='已打开文档所在的 Finder 文件夹。'}catch(e){revealStatus.textContent='打开失败：'+e.message;msg.textContent='打开失败：'+e.message}finally{reveal.disabled=false}};actions.append(reveal);actions.append(revealStatus);card.append(actions);let note=document.createElement('small');note.textContent=j.temporary_files_removed?(j.media_trashed?'原音视频已移入废纸篓，临时音轨已清理。':'原音视频与临时音轨已清理。'):'Word 内容未经人工校对。';card.append(note)}let controls=document.createElement('p');controls.className='actions';if(j.state==='youtube_verifying'){let resume=document.createElement('button');resume.textContent='已关闭验证弹窗，重新开始任务';resume.onclick=async()=>{resume.disabled=true;try{let result=await post('/youtube/confirm/'+j.id,{});msg.textContent=result.message;await refresh()}catch(e){msg.textContent=e.message;resume.disabled=false}};controls.append(resume)}if(j.state==='failed'||j.state==='login_required'){let retry=document.createElement('button');retry.textContent='重试任务';retry.className='retry-task';retry.onclick=async()=>{try{await post('/jobs',{url:j.url,engine:'qianwen'});await refresh()}catch(e){msg.textContent=e.message}};controls.append(retry)}let remove=document.createElement('button');remove.type='button';remove.className='secondary';remove.style.color='#a52222';remove.textContent='删除任务并同步到千问';if(deletion?.status==='pending'){remove.disabled=true;remove.textContent='正在同步删除…'}remove.onclick=async()=>{if(!confirm('删除“'+(j.title||j.id)+'”？将停止该任务，把本机任务文件和相关文稿移入废纸篓。同时删除对应的千问云端记录，云端删除后无法恢复。'))return;deletionResults.set(j.id,{status:'pending',message:'正在删除并同步到千问，请稍候…'});msg.className='';msg.textContent='正在删除并同步到千问，请稍候…';remove.disabled=true;remove.textContent='正在同步删除…';try{let health=await(await fetch('/health')).json();if(!health.cloud_delete)throw Error('请先双击加载本次更新.command启用千问同步删除');await requireControls();let r=await post('/delete/'+j.id,{});if(r.deletion_result?.status==='pending'){deletionResults.set(j.id,r.deletion_result);msg.className='';renderDeletionResult(msg,r.deletion_result);await refresh();return}deletedTaskIds.add(j.id);++refreshSequence;document.querySelectorAll('article[data-task-id="'+j.id+'"]').forEach(node=>node.remove());deletionResults.delete(j.id);showDeletionResult(r.deletion_result||{status:'success',message:r.message},true);await refresh()}catch(e){let message=e.deletionResult?.message||('删除失败\n工具任务列表记录：未删除成功\n本机文稿及任务文件：未确认删除成功\n对应的千问记录：未确认删除成功\n原因：'+e.message);let report=e.deletionResult||{status:'failed',message};deletionResults.set(j.id,report);showDeletionResult(report,false);let status=card.querySelector('.delete-result');if(!status){status=document.createElement('p');status.className='delete-result';status.setAttribute('role','alert');card.append(status)}status.style.color='#a52222';renderDeletionResult(status,report);remove.disabled=false;remove.textContent='删除任务并同步到千问'}};if(j.has_document){card.querySelector('.actions').append(remove)}else{controls.append(remove)}if(controls.children.length)card.append(controls);host.append(card)}await refreshLogin()}catch(e){msg.textContent='后台连接中断，请重新启动工具。'}}
 refresh();setInterval(refresh,6000);
 </script></html>
 ```
@@ -3726,6 +3732,15 @@ class VerificationTests(unittest.TestCase):
     args=launch.call_args.args[0]
     self.assertFalse(any('remote-debugging' in arg or 'enable-automation' in arg for arg in args))
     self.assertTrue(any('youtube-manual-chrome' in arg for arg in args))
+
+ def test_confirmation_only_for_waiting_task(self):
+  import tempfile,json
+  from pathlib import Path
+  from youtube_verification import confirm
+  with tempfile.TemporaryDirectory() as tmp:
+   job=Path(tmp);(job/'job.json').write_text(json.dumps({'state':'youtube_verifying'}));self.assertTrue(confirm(job)['ok']);self.assertTrue((job/'youtube-verification-confirmed').exists())
+   (job/'job.json').write_text(json.dumps({'state':'completed'}))
+   with self.assertRaises(ValueError):confirm(job)
 ```
 
 ### FILE: tools/build_guides.py
@@ -3787,14 +3802,27 @@ def verify(url,job,meta,save,timeout=900):
     profile.mkdir(parents=True,exist_ok=True)
     meta.update(state='youtube_verifying',error='请在弹出的Chrome专用窗口完成YouTube登录或验证，然后关闭该专用窗口；工具自动重试下载。')
     save(job/'job.json',meta)
+    marker=job/'youtube-verification-confirmed'
+    marker.unlink(missing_ok=True)
     process=subprocess.Popen([str(chrome_path()),'--user-data-dir='+str(profile.resolve()),'--no-first-run','--no-default-browser-check','--disable-background-mode','--new-window',url],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-    try:
-        process.wait(timeout=timeout)
-    except subprocess.TimeoutExpired as error:
-        raise RuntimeError('YouTube验证窗口仍未关闭；请完成登录并关闭专用窗口后重试。') from error
+    deadline=time.monotonic()+timeout
+    while process.poll() is None and not marker.exists():
+        if time.monotonic()>deadline:
+            raise RuntimeError('YouTube验证窗口仍未关闭；请完成登录并关闭专用窗口后手动确认。')
+        time.sleep(.5)
+    marker.unlink(missing_ok=True)
     if not (profile/'Default'/'Network'/'Cookies').is_file() and not (profile/'Default'/'Cookies').is_file():
         raise RuntimeError('Chrome未保存验证会话，请在专用窗口完成登录后再重试')
     return profile
+
+def confirm(job):
+    import json
+    record=job/'job.json'
+    if not record.is_file():raise ValueError('任务不存在')
+    meta=json.loads(record.read_text())
+    if meta.get('state')!='youtube_verifying':raise ValueError('任务当前不在等待YouTube验证，请刷新页面')
+    (job/'youtube-verification-confirmed').touch()
+    return {'ok':True,'message':'已确认关闭验证窗口，正在继续原任务，请稍候。'}
 ```
 
 ### FILE: 修复浏览器占用并加载更新.command
@@ -3965,13 +3993,13 @@ exit $result
 ```text
 {
   ".gitignore": "3e1cfc92af2c00c9dede00b674647a334c4cd068d8d8d743780802025013e291",
-  "app.py": "de5aa99204ed5c0c0091be3a045c157968d9fa3758ba8833ee7543b23721221c",
+  "app.py": "15b02945764aad7e0d83ca6cce391c652f3f2782db27d7903ffa888725e079ea",
   "bilibili_download.py": "286ed2197bb0763f3f060aea40075d0cb4a46c1252ef19a0343358e00dd40f5d",
   "browser_service.py": "4bb4e16ac5b1f0ba53a46e3df01a55b5072f4d1dcbd3c48e745aaf55d8e5136a",
   "check_recovery.py": "7fb929eabc113b13551764fe57caa4f72e7f37f6cded04a75c590fe54e1a3d2d",
   "cloud_migration.py": "cc5c02b953f404a280f0230e836ff9a5fe04f3e7002361ef9b8b8cdc244c07a0",
   "deletion_queue.py": "f9fef20b033ab62baa5fd40b4e1ce383d4bed3c8dde54f80a468417c03dc3cad",
-  "index.html": "910c2bbee351032d375aff76fbd53da4af9b06a65579dd9913abdb20e88d2f87",
+  "index.html": "2c42779b4fb3f6b4f05f3ca41290a9de2e90453c2f73ed50074a925180eb5aaa",
   "install-windows.cmd": "181344afef4643cc95c8098d5839cdf8df98963e8d05a13991deb41c8a38c2ed",
   "install-windows.ps1": "727a49a50e928b435c2863aff20dd8b20be4b0c5662d971c71ac8a4554dbaedd",
   "install.py": "8fb062e855fb41616c65923dc4ca43808d4c710fc8919d1cb62c039a1fb2144c",
@@ -3999,9 +4027,9 @@ exit $result
   "test_runtime_status.py": "4b255845c0a0fdb89f76f0fbd04d43d0162c35428ebef9ff3724470abbe6baca",
   "test_task_controls.py": "4c7ef80bd87e091c6140d660cacd406f932048ba89809b4a9236e1b327d3b9b5",
   "test_task_numbering.py": "0c1223029045edc6ff1210b2376505722b4e30f62ba4ab33c7d340042925afc8",
-  "test_youtube_verification.py": "6d94837c22e56f74cdaf666b28f4bc550aaa3df93dd41049937d1b29cb20a225",
+  "test_youtube_verification.py": "b6eaf70305d72e1399b1251d0134db9621c87e42e3d3b1de5951f8ae29cc6218",
   "tools/build_guides.py": "bab736160e519602158394a37bc7fda1d6093336692664de320ae4da03f2e296",
-  "youtube_verification.py": "9339d88a9fa85965d909045309c16599da841423df8ecf9c8257f788951332c9",
+  "youtube_verification.py": "67849c06e73f6dae626c89267652f923ec626a0301a827e5516b9c0cce9886cf",
   "修复浏览器占用并加载更新.command": "518dadc5853e369bd88d24645d55c42ef7af42595edd8f88defe62c3bb5a32d6",
   "停用自动启动.command": "0c2353cd41fd56b737864d09d6fe83f8b7d62cc1c51757e86fe0bc6bbd76b682",
   "切换千问并清理本地模型.command": "39ae5c718d5854f9fec85e13cd2c6fc683cb3c07844dffdd29697f97cfeeaaf4",

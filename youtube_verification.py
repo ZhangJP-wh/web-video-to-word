@@ -19,11 +19,24 @@ def verify(url,job,meta,save,timeout=900):
     profile.mkdir(parents=True,exist_ok=True)
     meta.update(state='youtube_verifying',error='请在弹出的Chrome专用窗口完成YouTube登录或验证，然后关闭该专用窗口；工具自动重试下载。')
     save(job/'job.json',meta)
+    marker=job/'youtube-verification-confirmed'
+    marker.unlink(missing_ok=True)
     process=subprocess.Popen([str(chrome_path()),'--user-data-dir='+str(profile.resolve()),'--no-first-run','--no-default-browser-check','--disable-background-mode','--new-window',url],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-    try:
-        process.wait(timeout=timeout)
-    except subprocess.TimeoutExpired as error:
-        raise RuntimeError('YouTube验证窗口仍未关闭；请完成登录并关闭专用窗口后重试。') from error
+    deadline=time.monotonic()+timeout
+    while process.poll() is None and not marker.exists():
+        if time.monotonic()>deadline:
+            raise RuntimeError('YouTube验证窗口仍未关闭；请完成登录并关闭专用窗口后手动确认。')
+        time.sleep(.5)
+    marker.unlink(missing_ok=True)
     if not (profile/'Default'/'Network'/'Cookies').is_file() and not (profile/'Default'/'Cookies').is_file():
         raise RuntimeError('Chrome未保存验证会话，请在专用窗口完成登录后再重试')
     return profile
+
+def confirm(job):
+    import json
+    record=job/'job.json'
+    if not record.is_file():raise ValueError('任务不存在')
+    meta=json.loads(record.read_text())
+    if meta.get('state')!='youtube_verifying':raise ValueError('任务当前不在等待YouTube验证，请刷新页面')
+    (job/'youtube-verification-confirmed').touch()
+    return {'ok':True,'message':'已确认关闭验证窗口，正在继续原任务，请稍候。'}
