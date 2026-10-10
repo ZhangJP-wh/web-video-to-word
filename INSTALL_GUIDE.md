@@ -166,9 +166,17 @@ curl --fail --location 'https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen3-AS
 卸载：先停用自动启动，并确认识别子进程已完成后，把 VideoTranscript 文件夹移入废纸篓。输出 Word 文件夹是独立的，想保留就不要删除。Python 和 Node 可能被其他软件使用，不要因为卸载本工具就自动卸载它们。
 
 
+### 页面登录与删除任务
+
+点击页面上的“千问登录”会打开本机专用浏览器。完成登录后关闭该窗口即可，无需到终端按回车。后台转写不会主动弹出登录窗口。网页检测到登录或验证提示时，任务显示“需要重新登录千问”，登录状态栏也会提示；登录后点击该任务的“重试任务”。状态栏显示最近成功转写时间，不能保证闲置期间登录一直有效，也不能提前知道准确失效时刻。登录窗口正在打开或浏览器正处理任务时，不重复打开另一份专用浏览器。
+
+每条任务都有“删除任务”按钮。确认后，先停止本机该任务的识别及子进程，再将任务目录、媒体、导出的Word和已记录的未完成Word移入废纸篓，任务从列表消失。删除不会清空废纸篓，不删除共享模型、其他任务或千问云端记录；云端副本由本人在千问网页管理。停止未成功或文件路径无法确认时，显示错误而不宣称删除完成。
+
+更新已有自动启动副本后，双击“加载本次更新.command”让服务重新加载，再刷新页面。它仅重启当前项目的网页服务，已有识别进程保留。不属于当前项目的启动项不会被操作。未启用自动启动的副本需正常停止旧手动网页服务后重新运行启动文件。
+
 ### 千问网页识别（实验性可选功能）
 
-首次登录完成后，可双击“测试千问后台流程.command”。测试窗口可保留在后台十分钟，以便在需要时触发重试；完成后可关闭。它从已有任务的音轨截取20秒，在无窗口浏览器中转写、导出并生成测试Word，结果保存到 work/qianwen-smoke-test.json。没有现成音轨时需要先下载一个测试视频。此操作不终止正在识别的任务，不删除完整原媒体。当前版本登录失效不会自动弹出窗口；失败后在页面查看错误，再双击“配置千问登录.command”重新登录并重试原链接。
+首次登录完成后，可双击“测试千问后台流程.command”。测试窗口可保留在后台十分钟，以便在需要时触发重试；完成后可关闭。它从已有任务的音轨截取20秒，在无窗口浏览器中转写、导出并生成测试Word，结果保存到 work/qianwen-smoke-test.json。没有现成音轨时需要先下载一个测试视频。此操作不终止正在识别的任务，不删除完整原媒体。登录失效不会自动弹出窗口；可在页面点击“千问登录”，关闭登录窗口后点击任务上的“重试任务”。
 
 页面的识别方式可以选择“千问网页”。首次双击项目中的“配置千问登录.command”，安装官方 Playwright/Chromium 后，在工具专用浏览器中登录千问，回到终端按回车。登录资料保存在本机 work/qianwen-browser-profile，不上传 GitHub。后续任务使用无窗口浏览器，音频会上传千问服务器。
 
@@ -357,6 +365,10 @@ PORT = int(os.environ.get('VIDEO_READER_PORT', '8767'))
 tasks = queue.Queue()
 pending = set()
 mutex = threading.Lock()
+generations = {}
+cancelled = set()
+login_process = None
+active_readers = {}
 
 
 def document_path(ident):
@@ -428,9 +440,11 @@ def start_title_lookup(ident, url):
 def resume_jobs():
     # After restarting the web service, leave an existing reader process running.
     for item in sorted(list_jobs(), key=lambda item: item['created_at']):
-        if item.get('state') not in ('completed', 'failed'):
+        if item.get('state') not in ('completed', 'failed', 'login_required'):
             pending.add(item['id'])
-            tasks.put((item['id'], item['url']))
+            generation=__import__('uuid').uuid4().hex
+            generations[item['id']]=generation
+            tasks.put((item['id'], item['url'], generation))
             if not item.get('title'):
                 start_title_lookup(item['id'], item['url'])
 
@@ -460,28 +474,75 @@ def list_jobs():
 
 def worker():
     while True:
-        ident, url = tasks.get()
+        ident, url, generation = tasks.get()
         try:
             folder = WORK / 'jobs' / ident
             import fcntl
+            if (ident,generation) in cancelled or not folder.exists():continue
             with (folder / '.prepare.lock').open('a') as lock:
                 while True:
+                    if (ident,generation) in cancelled or not folder.exists() or (folder/'.deleting').exists():break
                     try:
                         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
                         fcntl.flock(lock, fcntl.LOCK_UN)
                         break
-                    except BlockingIOError:
-                        time.sleep(2)
-            with (folder / 'run.log').open('ab') as log:
-                result = subprocess.run([str(ROOT / '.venv/bin/python'), str(ROOT / 'reader.py'),
-                                        'prepare', url, '--engine',
-                                        json.loads((folder/'job.json').read_text()).get('engine', 'local')], stdout=log, stderr=log)
-            if result.returncode == 0:
-                (folder / 'run.log').unlink(missing_ok=True)
+                    except BlockingIOError:time.sleep(.2)
+            with mutex:
+                if (ident,generation) in cancelled or not folder.exists() or (folder/'.deleting').exists():continue
+                log=(folder/'run.log').open('ab')
+                process=subprocess.Popen([str(ROOT/'.venv/bin/python'),str(ROOT/'reader.py'),
+                     'prepare',url,'--engine',json.loads((folder/'job.json').read_text()).get('engine','local')],
+                     stdout=log,stderr=log,start_new_session=True)
+                active_readers[ident]=(process,generation)
+            result=process.wait();log.close()
+            if result==0:(folder/'run.log').unlink(missing_ok=True)
+        except OSError:
+            pass
         finally:
             with mutex:
-                pending.discard(ident)
+                if generations.get(ident)==generation:
+                    pending.discard(ident);generations.pop(ident,None)
+                cancelled.discard((ident,generation))
+                if active_readers.get(ident,(None,None))[1]==generation:active_readers.pop(ident,None)
             tasks.task_done()
+
+
+def delete_task(ident):
+    from task_controls import trash_task, stop_reader
+    with mutex:
+        generation=generations.get(ident)
+        if generation:cancelled.add((ident,generation))
+        process=active_readers.get(ident,(None,None))[0]
+        if process and process.poll() is None:stop_reader(process.pid)
+        result=trash_task(ROOT,WORK,[OUTPUT,LEGACY_OUTPUT,ROOT/'outputs',OUTPUT.parent/'网页视频转语音文稿'],ident)
+        pending.discard(ident);generations.pop(ident,None)
+        return result
+
+
+def login_status():
+    path=WORK/'qianwen-auth.json'
+    state=json.loads(path.read_text()) if path.exists() else {'status':'unknown'}
+    if not state.get('last_success'):
+        successes=[item.get('added_at',0) for item in list_jobs() if item.get('state')=='completed' and item.get('model')=='qianwen-web']
+        if successes:state['last_success']=max(successes)
+    state['window_open']=bool(login_process and login_process.poll() is None)
+    if login_process and login_process.poll() not in (None,0):state['error']='登录窗口未能正常打开，请运行配置千问登录.command检查浏览器环境。'
+    return state
+
+
+def open_login():
+    global login_process
+    with mutex:
+        if login_process and login_process.poll() is None:return {'ok':True,'message':'登录窗口已经打开。'}
+        lock=WORK/'qianwen-browser.lock'
+        import fcntl
+        with lock.open('a') as handle:
+            try:fcntl.flock(handle,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            except BlockingIOError:raise ValueError('千问浏览器正在处理任务，请稍后再登录。')
+        with (WORK/'qianwen-login.log').open('ab') as log:
+            login_process=subprocess.Popen([str(ROOT/'.venv/bin/python'),str(ROOT/'qianwen_browser.py'),'login-ui'],
+                                           stdin=subprocess.DEVNULL,stdout=log,stderr=log,start_new_session=True)
+    return {'ok':True,'message':'正在打开千问登录窗口；登录完成后关闭该窗口即可。'}
 
 
 def enqueue(url, engine="local"):
@@ -504,12 +565,15 @@ def enqueue(url, engine="local"):
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 return ident
+            (folder/'.deleting').unlink(missing_ok=True)
             meta.setdefault('created_at', task_created_at(folder))
             meta.update(url=url, state='queued', engine=engine)
             meta.pop('error', None)
             save_json(folder / 'job.json', meta)
         pending.add(ident)
-        tasks.put((ident, url))
+        generation=__import__('uuid').uuid4().hex
+        generations[ident]=generation
+        tasks.put((ident, url, generation))
         if not meta.get('title'):
             start_title_lookup(ident, url)
     return ident
@@ -535,7 +599,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == '/':
             return self.reply(200, (ROOT / 'index.html').read_bytes(), 'text/html; charset=utf-8')
         if self.path == '/health':
-            return self.reply(200, {'ok': True, 'project': str(ROOT), 'pid': os.getpid(), 'engines': ['local', 'qianwen']})
+            return self.reply(200, {'ok': True, 'project': str(ROOT), 'pid': os.getpid(), 'engines': ['local', 'qianwen'], 'task_controls': True})
+        if self.path == '/qianwen/status':
+            return self.reply(200, login_status())
         if self.path == '/jobs':
             return self.reply(200, list_jobs())
         match = re.fullmatch(r'/(document|preview)/([0-9a-f]{12})', self.path)
@@ -566,6 +632,10 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(self.rfile.read(length))
             if self.path == '/jobs':
                 return self.reply(200, {'id': enqueue(data['url'].strip(), data.get('engine', 'local'))})
+            if self.path == '/qianwen/login':
+                return self.reply(200, open_login())
+            deletion=re.fullmatch(r'/delete/([0-9a-f]{12})',self.path)
+            if deletion:return self.reply(200, delete_task(deletion.group(1)))
             match = re.fullmatch(r'/reveal/([0-9a-f]{12})', self.path)
             if match:
                 reveal_document(match.group(1))
@@ -596,19 +666,22 @@ body{font:16px/1.7 -apple-system,BlinkMacSystemFont,sans-serif;color:#24322d;bac
 <h1>网页视频转语音识别文字稿</h1>
 <p>粘贴网页链接，后台下载并默认交给千问识别语音、区分发言人，生成带时间戳、以视频标题命名的 Word。</p>
 <form id="form"><input id="url" aria-label="音视频网页链接" type="url" required placeholder="粘贴 YouTube、哔哩哔哩等音视频网页链接"><select id="engine" aria-label="识别方式"><option value="qianwen">千问网页</option><option value="local">本地模型（速度较慢）</option></select><button>开始生成文稿</button></form>
-<p id="message" role="status"></p>
+<p class="actions"><button type="button" id="qianwen-login">千问登录</button><span id="login-status" role="status">正在读取千问登录状态…</span></p><p id="message" role="status"></p>
 <p class="notice">本文稿内容为语音模型识别结果，需要注意：可能有错别字和识别不准确之处。</p>
 <p><small>Word 保存到“下载/网页视频转语音识别文字稿”。选择千问时，音频将上传千问服务器；首次双击“配置千问登录.command”登录。完成后直接查看或打开所在位置。Word 完整性检查通过后自动将原音视频移入废纸篓并清理临时音轨。</small></p>
 <div id="jobs"></div>
 <script>
 const historicalTaskTimes={};
-const stages={queued:'排队中',downloading:'正在下载',downloaded:'下载完成',diarizing:'本地模型正在区分发言人',transcribing:'本地模型正在识别语音',cloud_transcribing:'千问正在后台识别语音',cloud_exporting:'正在导出千问原文 Word',completed:'Word 已生成，可以查看',failed:'处理失败，进度已保留'};
+const stages={queued:'排队中',downloading:'正在下载',downloaded:'下载完成',diarizing:'本地模型正在区分发言人',transcribing:'本地模型正在识别语音',cloud_transcribing:'千问正在后台识别语音',cloud_exporting:'正在导出千问原文 Word',completed:'Word 已生成，可以查看',login_required:'需要重新登录千问',failed:'处理失败，进度已保留'};
 const msg=document.querySelector('#message');
+async function requireControls(){let h=await(await fetch('/health')).json();if(!h.task_controls)throw Error('请双击“加载本次更新.command”，让网页服务加载登录和删除功能。')}
+document.querySelector('#qianwen-login').onclick=async()=>{try{await requireControls();let r=await post('/qianwen/login',{});msg.textContent=r.message}catch(e){msg.textContent=e.message}};
+async function refreshLogin(){try{let h=await(await fetch('/health')).json();if(!h.task_controls){document.querySelector('#login-status').textContent='新功能需要加载本次更新';return}let s=await(await fetch('/qianwen/status')).json();let text=s.window_open?'请在千问窗口中完成登录，完成后关闭窗口':s.status==='required'?'千问需要重新登录，请点击左侧按钮':s.last_success?'最近成功转写：'+new Date(s.last_success*1000).toLocaleString()+'；任务中会继续验证登录':'登录状态待验证；首次使用请点击千问登录';document.querySelector('#login-status').textContent=s.error||text}catch(e){document.querySelector('#login-status').textContent='暂时无法读取登录状态'}}
 async function post(url,data){let r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});let j=await r.json();if(!r.ok)throw Error(j.error);return j}
 document.querySelector('#form').onsubmit=async e=>{e.preventDefault();try{if(document.querySelector('#engine').value==='qianwen'){let health=await(await fetch('/health')).json();if(!health.engines?.includes('qianwen'))throw Error('网页服务需要加载新版。请完成千问登录配置后再试。')}await post('/jobs',{url:document.querySelector('#url').value,engine:document.querySelector('#engine').value});msg.textContent='已加入后台队列。你可以继续做其他事情，稍后回来查看文稿。';await refresh()}catch(e){msg.textContent=e.message}};
 function taskHeading(j){let title=j.title;if(j.state==='queued')return '待处理 · '+(title||'正在获取标题（'+new URL(j.url).hostname+' / '+(new URL(j.url).searchParams.get('v')||new URL(j.url).pathname.split('/').filter(Boolean).pop()||j.id)+'）');return title||'正在获取标题 · '+j.id}
 function link(text,url,style){let a=document.createElement('a');a.textContent=text;a.href=url;if(style)a.className=style;return a}
-async function refresh(){try{let jobs=await(await fetch('/jobs')).json();jobs.sort((a,b)=>(b.created_at??historicalTaskTimes[b.id]??b.added_at??Infinity)-(a.created_at??historicalTaskTimes[a.id]??a.added_at??Infinity));let host=document.querySelector('#jobs');host.replaceChildren();for(let j of jobs){let card=document.createElement('article');let h=document.createElement('h2');h.textContent=taskHeading(j);card.append(h);let p=document.createElement('p');p.textContent=(j.document&&!j.has_document)?'Word 文件已不在原保存位置，重新提交链接可生成':(stages[j.state]||'准备生成文稿');if(j.state==='transcribing'&&j.transcribed_seconds)p.textContent+=' · '+Math.floor(j.transcribed_seconds/60)+' / '+Math.ceil(j.audio_duration/60)+' 分钟';card.append(p);card.append(link('原网页',j.url));if(j.error){let err=document.createElement('p');err.textContent=j.error;card.append(err)}if(j.cleanup_error){let note=document.createElement('p');note.textContent='Word 已生成，但部分临时文件未清理：'+j.cleanup_error;card.append(note)}if(j.has_document){let actions=document.createElement('p');actions.className='actions';actions.append(link('查看 Word 文稿','/preview/'+j.id,'action'));let reveal=document.createElement('button');reveal.type='button';reveal.className='secondary';reveal.textContent='打开文档所在位置';let revealStatus=document.createElement('small');revealStatus.setAttribute('role','status');reveal.onclick=async()=>{reveal.disabled=true;revealStatus.textContent='正在打开文件夹…';try{await post('/reveal/'+j.id,{});revealStatus.textContent='已打开 Finder 文件夹。';msg.textContent='已打开文档所在的 Finder 文件夹。'}catch(e){revealStatus.textContent='打开失败：'+e.message;msg.textContent='打开失败：'+e.message}finally{reveal.disabled=false}};actions.append(reveal);actions.append(revealStatus);let download=link('下载 Word','/document/'+j.id,'action secondary');download.download=j.name+'.docx';actions.append(download);card.append(actions);let note=document.createElement('small');note.textContent=j.temporary_files_removed?(j.media_trashed?'原音视频已移入废纸篓，临时音轨已清理。':'原音视频与临时音轨已清理。'):'Word 内容未经人工校对。';card.append(note)}host.append(card)}}catch(e){msg.textContent='后台连接中断，请重新启动工具。'}}
+async function refresh(){try{let jobs=await(await fetch('/jobs')).json();jobs.sort((a,b)=>(b.created_at??historicalTaskTimes[b.id]??b.added_at??Infinity)-(a.created_at??historicalTaskTimes[a.id]??a.added_at??Infinity));let host=document.querySelector('#jobs');host.replaceChildren();for(let j of jobs){let card=document.createElement('article');let h=document.createElement('h2');h.textContent=taskHeading(j);card.append(h);let p=document.createElement('p');p.textContent=(j.document&&!j.has_document)?'Word 文件已不在原保存位置，重新提交链接可生成':(stages[j.state]||'准备生成文稿');if(j.state==='transcribing'&&j.transcribed_seconds)p.textContent+=' · '+Math.floor(j.transcribed_seconds/60)+' / '+Math.ceil(j.audio_duration/60)+' 分钟';card.append(p);card.append(link('原网页',j.url));if(j.error){let err=document.createElement('p');err.textContent=j.error;card.append(err)}if(j.cleanup_error){let note=document.createElement('p');note.textContent='Word 已生成，但部分临时文件未清理：'+j.cleanup_error;card.append(note)}if(j.has_document){let actions=document.createElement('p');actions.className='actions';actions.append(link('查看 Word 文稿','/preview/'+j.id,'action'));let reveal=document.createElement('button');reveal.type='button';reveal.className='secondary';reveal.textContent='打开文档所在位置';let revealStatus=document.createElement('small');revealStatus.setAttribute('role','status');reveal.onclick=async()=>{reveal.disabled=true;revealStatus.textContent='正在打开文件夹…';try{await post('/reveal/'+j.id,{});revealStatus.textContent='已打开 Finder 文件夹。';msg.textContent='已打开文档所在的 Finder 文件夹。'}catch(e){revealStatus.textContent='打开失败：'+e.message;msg.textContent='打开失败：'+e.message}finally{reveal.disabled=false}};actions.append(reveal);actions.append(revealStatus);let download=link('下载 Word','/document/'+j.id,'action secondary');download.download=j.name+'.docx';actions.append(download);card.append(actions);let note=document.createElement('small');note.textContent=j.temporary_files_removed?(j.media_trashed?'原音视频已移入废纸篓，临时音轨已清理。':'原音视频与临时音轨已清理。'):'Word 内容未经人工校对。';card.append(note)}let controls=document.createElement('p');controls.className='actions';if(j.state==='failed'||j.state==='login_required'){let retry=document.createElement('button');retry.textContent='重试任务';retry.onclick=async()=>{try{await post('/jobs',{url:j.url,engine:j.engine||'qianwen'});await refresh()}catch(e){msg.textContent=e.message}};controls.append(retry)}let remove=document.createElement('button');remove.type='button';remove.className='secondary';remove.style.color='#a52222';remove.textContent='删除任务';remove.onclick=async()=>{if(!confirm('删除“'+(j.title||j.id)+'”？将停止该任务，把本机任务文件和相关文稿移入废纸篓。千问云端记录需在千问网页中管理。'))return;remove.disabled=true;try{await requireControls();let r=await post('/delete/'+j.id,{});msg.textContent=r.message;await refresh()}catch(e){msg.textContent='删除失败：'+e.message;remove.disabled=false}};controls.append(remove);card.append(controls);host.append(card)}await refreshLogin()}catch(e){msg.textContent='后台连接中断，请重新启动工具。'}}
 refresh();setInterval(refresh,6000);
 </script></html>
 
@@ -938,7 +1011,8 @@ def prepare(args):
             build_document(job, raw)
             print(f'Word 已生成：{job}', flush=True)
         except Exception as error:
-            meta.update(state='failed', error=str(error))
+            from qianwen_browser import LoginRequired
+            meta.update(state='login_required' if isinstance(error,LoginRequired) else 'failed', error=str(error))
             save_json(job / 'job.json', meta)
             raise
 
@@ -1069,6 +1143,7 @@ def build_document(job, raw=None):
     for block in blocks:
         doc.add_paragraph(f'[{stamp(block["start"])}–{stamp(block["end"])}] {block.get("speaker", "")}', 'Caption')
         doc.add_paragraph(block['text'])
+    save_json(job/'export-target.json', {'path': str(path), 'url': meta['url']})
     partial = path.with_suffix('.partial.docx')
     doc.save(partial)
     report = verify_document(partial, meta, blocks)
@@ -1384,21 +1459,24 @@ print '确认页面能打开后，这个终端窗口可以关闭。'
 ### FILE: 文件校验.json
 ```json
 {
-  "app.py": "ed518a900637030efbd2512ab549d760c25ff6ec9a94f1449ccb43582e2618e6",
+  "app.py": "1674b87b11f86e1779e31b76ae93f7de94c3d2cf32be2d1c256507eef4111610",
   "check_recovery.py": "7fb929eabc113b13551764fe57caa4f72e7f37f6cded04a75c590fe54e1a3d2d",
-  "index.html": "339b72f6949c295d5638366727e4a724976cc0aaa74b28325ab17c1cf5fa9941",
+  "index.html": "53221c84e51b743d97e60611daf455f2727d5e408d914f6ac1a4613cf5241e30",
   "install.py": "d423b71bfd29145b2b6616da4b6474ad86beec07813eb8c9c36330ed298f19bb",
   "launch_service.py": "2cadb70ee153b678af24a6eb9e911d7e6e2ae4906ca8d3115ff8bb723d516dba",
   "prefetch_model.py": "1c7512114bdb7d49b6a2d8a4199452f5291ad4c04fc4effa4e329b4dab227df3",
-  "qianwen_browser.py": "59085a2bf8f03d430bbf00999b6e88a82336316005c0bec7a2360036ef9ad227",
-  "reader.py": "39334c25f04793cdebb4a3af7c0e6aa347da1ff6a62a581266b92d3e624aef4a",
+  "qianwen_browser.py": "cf35a52300ba890be471dad2b81181ef2bed6203a86236d26cdbaffec62d6302",
+  "reader.py": "ae83580c8e6d45ae0c6a3b49a9edd6aade1c42f7f9c3d61fb1ba209b9ca9d8b8",
   "requirements.txt": "aa237150a51d1f468ccab935e7ccd3235beddaf60afb9719676dc7f8fbf63e7c",
   "smoke_qianwen.py": "5a41ae58b74a8f2edaaadeb36c60235646989c5bdb2aa49e17d72dfd8778f71e",
   "smoke_qianwen_runner.py": "10c6047ad2b7ae20cac3945b41f8afdc047975fd2da3ef0dc576f3753a512409",
+  "task_controls.py": "a420be2ff8a6b4fc833d126f235e8a249c521e2a8c30435b36ebdf7426579084",
   "test_app.py": "911650ca1bd12c3e87ce499ed1d6bfea8882d8d04ac9e357bb98c067853befc9",
   "test_qianwen.py": "d95d8b70b0948906667d2de5389c00fbef90476554551beee1308e988d5dacc9",
   "test_reader.py": "ea7af8f55bfe4c47023ee9f712b6b078cfc9dd0beedec2325134556970fdc059",
+  "test_task_controls.py": "7a07b1d54e383405a9914e69503319854a8cd543d7348c618e09a5744cc0ce30",
   "停用自动启动.command": "0c2353cd41fd56b737864d09d6fe83f8b7d62cc1c51757e86fe0bc6bbd76b682",
+  "加载本次更新.command": "ceabb97ebf2b3d7df5568844de02733bc9e09f9c877621985bdaf801a182b978",
   "启动工具.command": "f67940511e7be84f96ef4eadc60dee14b08668d185f06f94cd03a02ebd3d59ca",
   "启用自动启动.command": "3475ec88b5c035f49adc0a13b3a14a09255ca19aa600a750051f6a8f1d8a07b6",
   "测试千问后台流程.command": "365ea7c455b38238341c79e3f2db6531de8053c34a909c4a210a19248a680c8c",
@@ -1669,6 +1747,7 @@ exit $result
 ```python
 """Qianwen web adapter. Uses an isolated local browser profile, never private APIs."""
 import os
+from contextlib import contextmanager
 import argparse
 import re
 import subprocess
@@ -1709,11 +1788,44 @@ def read_export(path, duration):
             'speaker_method': '发言人由千问网页识别；结束时间取下一段起点，末段取音频总长。'}
 
 
+class LoginRequired(RuntimeError):
+    pass
+
+
+def auth_state(status):
+    from reader import save_json
+    path=ROOT/'work/qianwen-auth.json'
+    previous=__import__('json').loads(path.read_text()) if path.exists() else {}
+    previous.update(status=status,checked_at=time.time())
+    if status=='valid':previous['last_success']=time.time()
+    save_json(path,previous)
+
+
+def require_login_if_visible(page):
+    prompts=page.get_by_role('dialog').filter(has_text=re.compile('登录|验证码|手机号'))
+    for prompt in prompts.all():
+        if prompt.is_visible():
+            auth_state('required')
+            raise LoginRequired('千问需要重新登录或完成验证。请点击页面上的“千问登录”，完成后重试任务。')
+    buttons=page.get_by_role('button',name=re.compile('^(登录|登录/注册|立即登录)$'))
+    if any(button.is_visible() for button in buttons.all()):
+        auth_state('required')
+        raise LoginRequired('千问登录已失效，请点击“千问登录”重新登录后重试。')
+
+
+@contextmanager
 def browser_context(playwright, headed=False):
+    import fcntl
     PROFILE.mkdir(parents=True, exist_ok=True)
-    return playwright.chromium.launch_persistent_context(str(PROFILE), headless=not headed,
-                                                         accept_downloads=True,
-                                                         viewport={'width': 1920, 'height': 1600})
+    with (ROOT/'work/qianwen-browser.lock').open('a') as lock:
+        try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        except BlockingIOError:raise RuntimeError('千问浏览器正在使用中，请关闭登录窗口或等待任务完成后再试。')
+        context=playwright.chromium.launch_persistent_context(str(PROFILE), headless=not headed,
+                     accept_downloads=True,viewport={'width':1920,'height':1600})
+        try:yield context
+        finally:
+            try:context.close()
+            except Exception:pass
 
 
 def export_audio(audio, job, meta, save):
@@ -1731,6 +1843,7 @@ def export_audio(audio, job, meta, save):
             page.goto(meta.get('qianwen_url') or URL)
             page.screenshot(path=str(job/'browser-diagnostic.png'), full_page=True)
             (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
+            require_login_if_visible(page)
             if not meta.get('qianwen_url'):
                 try:
                     page.get_by_text('中英文自由说', exact=True).wait_for(timeout=30000)
@@ -1745,11 +1858,13 @@ def export_audio(audio, job, meta, save):
                         page.get_by_role('button', name=re.compile('点击或将')).click()
                     chooser.value.set_files(str(upload))
                     page.get_by_role('button', name='确 认', exact=True).click()
+                    require_login_if_visible(page)
                     meta['qianwen_submitted'] = True; save(job/'job.json', meta)
                 meta['state'] = 'cloud_transcribing'; save(job/'job.json', meta)
                 title = upload.stem
                 deadline = time.monotonic() + 6 * 3600
                 while time.monotonic() < deadline:
+                    require_login_if_visible(page)
                     from playwright.sync_api import TimeoutError as BrowserTimeout
                     if '/efficiency/doc/transcripts/' not in page.url:
                         page.get_by_text(title, exact=True).filter(visible=True).first.click(timeout=10000)
@@ -1783,23 +1898,30 @@ def export_audio(audio, job, meta, save):
                 panel.get_by_role('button', name='导出', exact=True).click()
             download.value.save_as(str(destination))
     raw = read_export(destination, meta['audio_duration'])
+    auth_state('valid')
     upload.unlink(missing_ok=True)
     return raw
 
 
-def login():
+def login(ui=False):
     from playwright.sync_api import sync_playwright
     with sync_playwright() as p:
         with browser_context(p, headed=True) as context:
             page = context.pages[0] if context.pages else context.new_page()
             page.goto(URL)
-            input('请在专用浏览器中登录千问，确认音视频速读页面可用后，在此按回车保存登录。')
+            if ui:
+                while not page.is_closed():
+                    try:page.wait_for_timeout(500)
+                    except Exception:break
+                auth_state('unknown')
+            else:
+                input('请在专用浏览器中登录千问，确认音视频速读页面可用后，在此按回车保存登录。')
     print('登录环境已保存在本机。后台任务不会打开此浏览器窗口。')
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(); parser.add_argument('command', choices=['login'])
-    parser.parse_args(); login()
+    parser = argparse.ArgumentParser(); parser.add_argument('command', choices=['login','login-ui'])
+    args=parser.parse_args(); login(ui=args.command=='login-ui')
 
 ```
 
@@ -1945,5 +2067,193 @@ while time.monotonic()<end:
         subprocess.run([sys.executable,str(ROOT/'smoke_qianwen.py')])
         print('测试结果已保存。保留此窗口即可，接下来十分钟内可后台重试；按Ctrl+C结束。',flush=True)
     time.sleep(1)
+
+```
+
+### FILE: task_controls.py
+```python
+"""Stop one verified reader and move its local artifacts to the Trash."""
+import json
+import os
+import re
+import shlex
+import signal
+import subprocess
+import time
+from pathlib import Path
+
+
+def reader_pids(root, folder):
+    result=subprocess.run(['/usr/sbin/lsof','-t',str(folder/'.prepare.lock')],capture_output=True,text=True)
+    verified=[]
+    for value in result.stdout.split():
+        pid=int(value)
+        command=subprocess.run(['/bin/ps','-p',str(pid),'-o','command='],capture_output=True,text=True)
+        args=shlex.split(command.stdout.strip())
+        if len(args)>=3 and args[1]==str(root/'reader.py') and args[2]=='prepare':verified.append(pid)
+    return verified
+
+
+def stop_reader(pid):
+    children=subprocess.run(['/usr/bin/pgrep','-P',str(pid)],capture_output=True,text=True)
+    for child in children.stdout.split():stop_reader(int(child))
+    try:os.kill(pid,signal.SIGTERM)
+    except ProcessLookupError:pass
+
+
+def trash_task(root, work, output_roots, ident):
+    from send2trash import send2trash
+    from docx import Document
+    import fcntl
+    if not re.fullmatch('[0-9a-f]{12}',ident):raise ValueError('任务编号不合法')
+    folder=work/'jobs'/ident
+    if folder.is_symlink() or not folder.exists():raise ValueError('任务不存在')
+    meta=json.loads((folder/'job.json').read_text())
+    (folder/'.deleting').touch()
+    for pid in reader_pids(root,folder):stop_reader(pid)
+    # Do not remove files until the reader has actually relinquished ownership.
+    with (folder/'.prepare.lock').open('a') as lock:
+        deadline=time.monotonic()+15
+        while True:
+            try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB);break
+            except BlockingIOError:
+                if time.monotonic()>deadline:
+                    (folder/'.deleting').unlink(missing_ok=True)
+                    raise ValueError('任务尚未停止，未删除文件。请稍后重试。')
+                time.sleep(.2)
+        meta=json.loads((folder/'job.json').read_text())
+        candidates=set()
+        owned=set()
+        reservation=folder/'export-target.json'
+        if reservation.exists():
+            record=json.loads(reservation.read_text())
+            if record.get('url')==meta.get('url'):
+                target=Path(record['path'])
+                owned.update([target,target.with_suffix('.partial.docx')])
+                candidates.update(owned)
+        if meta.get('document'):
+            candidates.add(Path(meta['document']));owned.add(Path(meta['document']))
+        name=meta.get('name')
+        if name:
+            for base in output_roots:
+                for suffix in ('.docx','.partial.docx'):
+                    candidates.add(base/(name+suffix))
+                    candidates.add(base/(name+' ('+ident+')'+suffix))
+        for path in candidates:
+            if path.exists() and (path.is_symlink() or not any(base.resolve() in path.resolve().parents for base in output_roots)):
+                raise ValueError('文稿路径不属于工具输出目录，未删除任务')
+        for path in candidates:
+            if not path.exists():continue
+            if path.is_symlink() or not any(base.resolve() in path.resolve().parents for base in output_roots):
+                raise ValueError('文稿路径不属于工具输出目录，未删除任务')
+            try:
+                paragraphs=Document(path).paragraphs
+                belongs=path in owned or bool(paragraphs and paragraphs[0].text==meta.get('url'))
+            except Exception:
+                # An incomplete file is owned only if it was explicitly recorded.
+                belongs=str(path)==meta.get('document') or path in owned
+                if not belongs and path.suffix=='.docx' and '.partial' in path.name:
+                    raise ValueError('无法确认未完成文稿的归属，已保留文件，请检查')
+            if belongs:send2trash(str(path.resolve()))
+        for base in output_roots[1:]:
+            legacy=base/ident
+            if legacy.is_dir() and not legacy.is_symlink():send2trash(str(legacy.resolve()))
+        send2trash(str(folder.resolve()))
+    return {'ok':True,'message':'本机任务与相关文件已移入废纸篓。千问云端记录需在千问网页中管理。'}
+
+```
+
+### FILE: test_task_controls.py
+```python
+import json
+import shutil
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+from docx import Document
+import task_controls
+import qianwen_browser
+
+
+class TaskControlTests(unittest.TestCase):
+    def setup_files(self, root):
+        folder=root/'work/jobs/123456abcdef';folder.mkdir(parents=True)
+        output=root/'output';output.mkdir()
+        path=output/'测试.docx';doc=Document();doc.add_paragraph('https://example.com/test');doc.add_paragraph('正文');doc.save(path)
+        meta={'name':'测试','url':'https://example.com/test','document':str(path)}
+        (folder/'job.json').write_text(json.dumps(meta))
+        (folder/'media').mkdir();(folder/'media/video.mp4').write_bytes(b'test')
+        return folder,output,path
+
+    def run_delete(self, root, output):
+        trash=root/'trash';trash.mkdir()
+        def move(path):shutil.move(path,trash/Path(path).name)
+        with patch('send2trash.send2trash',side_effect=move),patch('task_controls.reader_pids',return_value=[]):
+            task_controls.trash_task(root,root/'work',[output],'123456abcdef')
+        return trash
+
+    def test_removes_task_media_document_and_reserved_partial(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);folder,output,path=self.setup_files(root)
+            partial=path.with_suffix('.partial.docx');partial.write_bytes(b'incomplete zip')
+            (folder/'export-target.json').write_text(json.dumps({'url':'https://example.com/test','path':str(path)}))
+            trash=self.run_delete(root,output)
+            self.assertFalse(folder.exists());self.assertFalse(path.exists());self.assertFalse(partial.exists())
+            self.assertTrue((trash/'123456abcdef/media/video.mp4').exists())
+            self.assertTrue((trash/'测试.docx').exists());self.assertTrue((trash/'测试.partial.docx').exists())
+
+    def test_preserves_unrelated_document_with_same_title(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);folder,output,path=self.setup_files(root)
+            meta=json.loads((folder/'job.json').read_text());meta.pop('document');(folder/'job.json').write_text(json.dumps(meta))
+            doc=Document();doc.add_paragraph('https://other.example/video');doc.save(path)
+            self.run_delete(root,output);self.assertTrue(path.exists())
+
+    def test_rejects_document_outside_outputs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);folder,output,path=self.setup_files(root)
+            outside=root/'private.docx';shutil.copy2(path,outside)
+            meta=json.loads((folder/'job.json').read_text());meta['document']=str(outside);(folder/'job.json').write_text(json.dumps(meta))
+            with patch('task_controls.reader_pids',return_value=[]),patch('send2trash.send2trash'),self.assertRaises(ValueError):
+                task_controls.trash_task(root,root/'work',[output],'123456abcdef')
+            self.assertTrue(outside.exists());self.assertTrue(folder.exists())
+
+    def test_invalid_identifier_cannot_escape_job_folder(self):
+        with self.assertRaises(ValueError):task_controls.trash_task(Path('/tmp'),Path('/tmp'),[], '../escape')
+
+    def test_login_prompt_becomes_explicit_login_required(self):
+        from unittest.mock import MagicMock
+        page=MagicMock();prompt=MagicMock();prompt.is_visible.return_value=True
+        page.get_by_role.return_value.filter.return_value.all.return_value=[prompt]
+        with patch('qianwen_browser.auth_state') as state,self.assertRaises(qianwen_browser.LoginRequired):
+            qianwen_browser.require_login_if_visible(page)
+        state.assert_called_once_with('required')
+
+if __name__=='__main__':unittest.main()
+
+```
+
+### FILE: 加载本次更新.command
+```zsh
+#!/bin/zsh
+cd -- "${0:A:h}" || exit 1
+.venv/bin/python - <<'PY'
+import os, plistlib, subprocess
+from pathlib import Path
+from launch_service import LABEL
+root=Path.cwd()
+path=Path.home()/'Library/LaunchAgents'/(LABEL+'.plist')
+if not path.exists():
+    raise SystemExit('尚未启用自动启动。请先关闭手动网页服务，再运行启动工具.command。')
+config=plistlib.loads(path.read_bytes())
+if config.get('WorkingDirectory')!=str(root):
+    raise SystemExit('自动启动项属于另一个项目副本，未停止服务。')
+subprocess.run(['/bin/launchctl','kill','SIGTERM',f'gui/{os.getuid()}/{LABEL}'],check=True)
+print('网页服务正在自动恢复。请稍后刷新工具页面。正在识别的任务会保留。')
+PY
+result=$?
+read '?按回车关闭窗口。'
+exit "$result"
 
 ```

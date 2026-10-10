@@ -1,5 +1,6 @@
 """Qianwen web adapter. Uses an isolated local browser profile, never private APIs."""
 import os
+from contextlib import contextmanager
 import argparse
 import re
 import subprocess
@@ -40,11 +41,44 @@ def read_export(path, duration):
             'speaker_method': '发言人由千问网页识别；结束时间取下一段起点，末段取音频总长。'}
 
 
+class LoginRequired(RuntimeError):
+    pass
+
+
+def auth_state(status):
+    from reader import save_json
+    path=ROOT/'work/qianwen-auth.json'
+    previous=__import__('json').loads(path.read_text()) if path.exists() else {}
+    previous.update(status=status,checked_at=time.time())
+    if status=='valid':previous['last_success']=time.time()
+    save_json(path,previous)
+
+
+def require_login_if_visible(page):
+    prompts=page.get_by_role('dialog').filter(has_text=re.compile('登录|验证码|手机号'))
+    for prompt in prompts.all():
+        if prompt.is_visible():
+            auth_state('required')
+            raise LoginRequired('千问需要重新登录或完成验证。请点击页面上的“千问登录”，完成后重试任务。')
+    buttons=page.get_by_role('button',name=re.compile('^(登录|登录/注册|立即登录)$'))
+    if any(button.is_visible() for button in buttons.all()):
+        auth_state('required')
+        raise LoginRequired('千问登录已失效，请点击“千问登录”重新登录后重试。')
+
+
+@contextmanager
 def browser_context(playwright, headed=False):
+    import fcntl
     PROFILE.mkdir(parents=True, exist_ok=True)
-    return playwright.chromium.launch_persistent_context(str(PROFILE), headless=not headed,
-                                                         accept_downloads=True,
-                                                         viewport={'width': 1920, 'height': 1600})
+    with (ROOT/'work/qianwen-browser.lock').open('a') as lock:
+        try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        except BlockingIOError:raise RuntimeError('千问浏览器正在使用中，请关闭登录窗口或等待任务完成后再试。')
+        context=playwright.chromium.launch_persistent_context(str(PROFILE), headless=not headed,
+                     accept_downloads=True,viewport={'width':1920,'height':1600})
+        try:yield context
+        finally:
+            try:context.close()
+            except Exception:pass
 
 
 def export_audio(audio, job, meta, save):
@@ -62,6 +96,7 @@ def export_audio(audio, job, meta, save):
             page.goto(meta.get('qianwen_url') or URL)
             page.screenshot(path=str(job/'browser-diagnostic.png'), full_page=True)
             (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
+            require_login_if_visible(page)
             if not meta.get('qianwen_url'):
                 try:
                     page.get_by_text('中英文自由说', exact=True).wait_for(timeout=30000)
@@ -76,11 +111,13 @@ def export_audio(audio, job, meta, save):
                         page.get_by_role('button', name=re.compile('点击或将')).click()
                     chooser.value.set_files(str(upload))
                     page.get_by_role('button', name='确 认', exact=True).click()
+                    require_login_if_visible(page)
                     meta['qianwen_submitted'] = True; save(job/'job.json', meta)
                 meta['state'] = 'cloud_transcribing'; save(job/'job.json', meta)
                 title = upload.stem
                 deadline = time.monotonic() + 6 * 3600
                 while time.monotonic() < deadline:
+                    require_login_if_visible(page)
                     from playwright.sync_api import TimeoutError as BrowserTimeout
                     if '/efficiency/doc/transcripts/' not in page.url:
                         page.get_by_text(title, exact=True).filter(visible=True).first.click(timeout=10000)
@@ -114,20 +151,27 @@ def export_audio(audio, job, meta, save):
                 panel.get_by_role('button', name='导出', exact=True).click()
             download.value.save_as(str(destination))
     raw = read_export(destination, meta['audio_duration'])
+    auth_state('valid')
     upload.unlink(missing_ok=True)
     return raw
 
 
-def login():
+def login(ui=False):
     from playwright.sync_api import sync_playwright
     with sync_playwright() as p:
         with browser_context(p, headed=True) as context:
             page = context.pages[0] if context.pages else context.new_page()
             page.goto(URL)
-            input('请在专用浏览器中登录千问，确认音视频速读页面可用后，在此按回车保存登录。')
+            if ui:
+                while not page.is_closed():
+                    try:page.wait_for_timeout(500)
+                    except Exception:break
+                auth_state('unknown')
+            else:
+                input('请在专用浏览器中登录千问，确认音视频速读页面可用后，在此按回车保存登录。')
     print('登录环境已保存在本机。后台任务不会打开此浏览器窗口。')
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(); parser.add_argument('command', choices=['login'])
-    parser.parse_args(); login()
+    parser = argparse.ArgumentParser(); parser.add_argument('command', choices=['login','login-ui'])
+    args=parser.parse_args(); login(ui=args.command=='login-ui')

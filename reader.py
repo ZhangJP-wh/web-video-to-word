@@ -277,7 +277,8 @@ def prepare(args):
             build_document(job, raw)
             print(f'Word 已生成：{job}', flush=True)
         except Exception as error:
-            meta.update(state='failed', error=str(error))
+            from qianwen_browser import LoginRequired
+            meta.update(state='login_required' if isinstance(error,LoginRequired) else 'failed', error=str(error))
             save_json(job / 'job.json', meta)
             raise
 
@@ -408,6 +409,7 @@ def build_document(job, raw=None):
     for block in blocks:
         doc.add_paragraph(f'[{stamp(block["start"])}–{stamp(block["end"])}] {block.get("speaker", "")}', 'Caption')
         doc.add_paragraph(block['text'])
+    save_json(job/'export-target.json', {'path': str(path), 'url': meta['url']})
     partial = path.with_suffix('.partial.docx')
     doc.save(partial)
     report = verify_document(partial, meta, blocks)

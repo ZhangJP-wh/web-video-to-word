@@ -19,6 +19,10 @@ PORT = int(os.environ.get('VIDEO_READER_PORT', '8767'))
 tasks = queue.Queue()
 pending = set()
 mutex = threading.Lock()
+generations = {}
+cancelled = set()
+login_process = None
+active_readers = {}
 
 
 def document_path(ident):
@@ -90,9 +94,11 @@ def start_title_lookup(ident, url):
 def resume_jobs():
     # After restarting the web service, leave an existing reader process running.
     for item in sorted(list_jobs(), key=lambda item: item['created_at']):
-        if item.get('state') not in ('completed', 'failed'):
+        if item.get('state') not in ('completed', 'failed', 'login_required'):
             pending.add(item['id'])
-            tasks.put((item['id'], item['url']))
+            generation=__import__('uuid').uuid4().hex
+            generations[item['id']]=generation
+            tasks.put((item['id'], item['url'], generation))
             if not item.get('title'):
                 start_title_lookup(item['id'], item['url'])
 
@@ -122,28 +128,75 @@ def list_jobs():
 
 def worker():
     while True:
-        ident, url = tasks.get()
+        ident, url, generation = tasks.get()
         try:
             folder = WORK / 'jobs' / ident
             import fcntl
+            if (ident,generation) in cancelled or not folder.exists():continue
             with (folder / '.prepare.lock').open('a') as lock:
                 while True:
+                    if (ident,generation) in cancelled or not folder.exists() or (folder/'.deleting').exists():break
                     try:
                         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
                         fcntl.flock(lock, fcntl.LOCK_UN)
                         break
-                    except BlockingIOError:
-                        time.sleep(2)
-            with (folder / 'run.log').open('ab') as log:
-                result = subprocess.run([str(ROOT / '.venv/bin/python'), str(ROOT / 'reader.py'),
-                                        'prepare', url, '--engine',
-                                        json.loads((folder/'job.json').read_text()).get('engine', 'local')], stdout=log, stderr=log)
-            if result.returncode == 0:
-                (folder / 'run.log').unlink(missing_ok=True)
+                    except BlockingIOError:time.sleep(.2)
+            with mutex:
+                if (ident,generation) in cancelled or not folder.exists() or (folder/'.deleting').exists():continue
+                log=(folder/'run.log').open('ab')
+                process=subprocess.Popen([str(ROOT/'.venv/bin/python'),str(ROOT/'reader.py'),
+                     'prepare',url,'--engine',json.loads((folder/'job.json').read_text()).get('engine','local')],
+                     stdout=log,stderr=log,start_new_session=True)
+                active_readers[ident]=(process,generation)
+            result=process.wait();log.close()
+            if result==0:(folder/'run.log').unlink(missing_ok=True)
+        except OSError:
+            pass
         finally:
             with mutex:
-                pending.discard(ident)
+                if generations.get(ident)==generation:
+                    pending.discard(ident);generations.pop(ident,None)
+                cancelled.discard((ident,generation))
+                if active_readers.get(ident,(None,None))[1]==generation:active_readers.pop(ident,None)
             tasks.task_done()
+
+
+def delete_task(ident):
+    from task_controls import trash_task, stop_reader
+    with mutex:
+        generation=generations.get(ident)
+        if generation:cancelled.add((ident,generation))
+        process=active_readers.get(ident,(None,None))[0]
+        if process and process.poll() is None:stop_reader(process.pid)
+        result=trash_task(ROOT,WORK,[OUTPUT,LEGACY_OUTPUT,ROOT/'outputs',OUTPUT.parent/'网页视频转语音文稿'],ident)
+        pending.discard(ident);generations.pop(ident,None)
+        return result
+
+
+def login_status():
+    path=WORK/'qianwen-auth.json'
+    state=json.loads(path.read_text()) if path.exists() else {'status':'unknown'}
+    if not state.get('last_success'):
+        successes=[item.get('added_at',0) for item in list_jobs() if item.get('state')=='completed' and item.get('model')=='qianwen-web']
+        if successes:state['last_success']=max(successes)
+    state['window_open']=bool(login_process and login_process.poll() is None)
+    if login_process and login_process.poll() not in (None,0):state['error']='登录窗口未能正常打开，请运行配置千问登录.command检查浏览器环境。'
+    return state
+
+
+def open_login():
+    global login_process
+    with mutex:
+        if login_process and login_process.poll() is None:return {'ok':True,'message':'登录窗口已经打开。'}
+        lock=WORK/'qianwen-browser.lock'
+        import fcntl
+        with lock.open('a') as handle:
+            try:fcntl.flock(handle,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            except BlockingIOError:raise ValueError('千问浏览器正在处理任务，请稍后再登录。')
+        with (WORK/'qianwen-login.log').open('ab') as log:
+            login_process=subprocess.Popen([str(ROOT/'.venv/bin/python'),str(ROOT/'qianwen_browser.py'),'login-ui'],
+                                           stdin=subprocess.DEVNULL,stdout=log,stderr=log,start_new_session=True)
+    return {'ok':True,'message':'正在打开千问登录窗口；登录完成后关闭该窗口即可。'}
 
 
 def enqueue(url, engine="local"):
@@ -166,12 +219,15 @@ def enqueue(url, engine="local"):
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 return ident
+            (folder/'.deleting').unlink(missing_ok=True)
             meta.setdefault('created_at', task_created_at(folder))
             meta.update(url=url, state='queued', engine=engine)
             meta.pop('error', None)
             save_json(folder / 'job.json', meta)
         pending.add(ident)
-        tasks.put((ident, url))
+        generation=__import__('uuid').uuid4().hex
+        generations[ident]=generation
+        tasks.put((ident, url, generation))
         if not meta.get('title'):
             start_title_lookup(ident, url)
     return ident
@@ -197,7 +253,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == '/':
             return self.reply(200, (ROOT / 'index.html').read_bytes(), 'text/html; charset=utf-8')
         if self.path == '/health':
-            return self.reply(200, {'ok': True, 'project': str(ROOT), 'pid': os.getpid(), 'engines': ['local', 'qianwen']})
+            return self.reply(200, {'ok': True, 'project': str(ROOT), 'pid': os.getpid(), 'engines': ['local', 'qianwen'], 'task_controls': True})
+        if self.path == '/qianwen/status':
+            return self.reply(200, login_status())
         if self.path == '/jobs':
             return self.reply(200, list_jobs())
         match = re.fullmatch(r'/(document|preview)/([0-9a-f]{12})', self.path)
@@ -228,6 +286,10 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(self.rfile.read(length))
             if self.path == '/jobs':
                 return self.reply(200, {'id': enqueue(data['url'].strip(), data.get('engine', 'local'))})
+            if self.path == '/qianwen/login':
+                return self.reply(200, open_login())
+            deletion=re.fullmatch(r'/delete/([0-9a-f]{12})',self.path)
+            if deletion:return self.reply(200, delete_task(deletion.group(1)))
             match = re.fullmatch(r'/reveal/([0-9a-f]{12})', self.path)
             if match:
                 reveal_document(match.group(1))
