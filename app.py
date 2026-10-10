@@ -139,11 +139,14 @@ def task_created_at(folder):
 
 
 def list_jobs():
+    from task_numbering import numbers
+    numbering=numbers(WORK)
     items = []
     for path in (WORK / 'jobs').glob('*/job.json'):
         try:
             item = json.loads(path.read_text(encoding="utf-8"))
             item['id'] = path.parent.name
+            item['task_number']=numbering[item['id']]
             deletion=path.parent/'delete-result.json'
             if deletion.exists():item['deletion_result']=json.loads(deletion.read_text(encoding="utf-8"))
             title_path = path.parent / 'page-title.json'
@@ -154,7 +157,7 @@ def list_jobs():
             items.append(item)
         except (ValueError, OSError):
             pass
-    return sorted(items, key=lambda item: (item['created_at'], item['id']), reverse=True)
+    return sorted(items,key=lambda item:item['task_number'],reverse=True)
 
 
 def worker():
@@ -312,6 +315,8 @@ def enqueue(url, engine="qianwen"):
             meta.update(url=url, state='queued', engine=engine)
             meta.pop('error', None)
             save_json(folder / 'job.json', meta)
+            from task_numbering import numbers
+            numbers(WORK)
         pending.add(ident)
         generation=__import__('uuid').uuid4().hex
         generations[ident]=generation

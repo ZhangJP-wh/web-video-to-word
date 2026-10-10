@@ -285,9 +285,9 @@ def configure_folder_sort(folder):
     with DSStore.open(str(settings), 'r+' if settings.exists() and settings.stat().st_size else 'w+') as store:
         preferences = {
             'viewOptionsVersion': 1, 'iconSize': 16.0, 'showIconPreview': True,
-            'sortColumn': 'dateAdded', 'textSize': 13.0, 'useRelativeDates': True,
+            'sortColumn': 'name', 'textSize': 13.0, 'useRelativeDates': True,
             'calculateAllSizes': False, 'columns': {
-                'name': {'index': 0, 'width': 450, 'visible': True, 'ascending': True},
+                'name': {'index': 0, 'width': 450, 'visible': True, 'ascending': False},
                 'dateAdded': {'index': 1, 'width': 180, 'visible': True, 'ascending': False},
                 'dateModified': {'index': 2, 'width': 180, 'visible': False, 'ascending': False},
                 'size': {'index': 3, 'width': 90, 'visible': True, 'ascending': False},
@@ -306,11 +306,13 @@ def build_document(job, raw=None):
     blocks = make_blocks(raw.get('segments', []))
     if not blocks:
         raise ValueError('识别结果为空，保留媒体，不生成 Word')
+    from task_numbering import numbers,document_name
+    numbered_name=document_name(numbers(job.parent.parent)[job.name],meta['name'])
     folder = OUTPUT
     folder.mkdir(parents=True, exist_ok=True)
-    path = Path(meta['document']) if meta.get('document') and Path(meta['document']).parent == folder else folder / (meta['name'] + '.docx')
+    path = Path(meta['document']) if meta.get('document') and Path(meta['document']).parent == folder else folder / (numbered_name + '.docx')
     if path.exists() and str(path) != meta.get('document'):
-        path = folder / (meta['name'] + ' (' + job.name + ').docx')
+        path = folder / (numbered_name + ' (' + job.name + ').docx')
     doc = Document()
     normal = doc.styles['Normal']
     normal.font.name = 'Arial'

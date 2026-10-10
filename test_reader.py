@@ -61,7 +61,7 @@ class PipelineTests(unittest.TestCase):
         self.assertTrue(warning.runs[0].bold)
         self.assertIsNotNone(warning.runs[0].font.highlight_color)
         self.assertNotIn('ChatGPT 总结', texts)
-        self.assertEqual(Path(saved['document']).name, '测试标题.docx')
+        self.assertEqual(Path(saved['document']).name, '1 - 测试标题.docx')
         self.assertFalse(audio.exists())
         self.assertTrue((self.trash / audio.name).exists())
         self.assertEqual(Path(saved['document']).parent, self.output)
@@ -84,7 +84,7 @@ class PipelineTests(unittest.TestCase):
         saved=json.loads((job/'job.json').read_text(encoding="utf-8"));texts=[p.text for p in Document(saved['document']).paragraphs]
         self.assertEqual(saved['state'],'completed')
         self.assertEqual(texts[0],'本地上传文件：我的录音.wav')
-        self.assertEqual(Path(saved['document']).name,'我的录音.docx')
+        self.assertEqual(Path(saved['document']).name,'1 - 我的录音.docx')
         self.assertIn('[00:00:00–00:00:01] 发言人 1',texts)
         self.assertTrue(original.exists());self.assertFalse(Path(meta['media']).exists())
 
