@@ -141,7 +141,7 @@ def prepare(args):
             meta['audio_duration'] = duration
             if meta.get('duration') and abs(duration - meta['duration']) > max(5, duration * .01):
                 raise ValueError('下载音轨时长与网页时长不符，需要检查')
-            meta['state'] = 'transcribing'
+            meta['state'] = 'cloud_preparing'
             meta['model'] = 'qianwen-web'
             save_json(job / 'job.json', meta)
             os.environ.setdefault('SSL_CERT_FILE', '/etc/ssl/cert.pem')
