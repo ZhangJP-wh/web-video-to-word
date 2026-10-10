@@ -249,7 +249,7 @@ def delete_cloud_record(page, job, meta, save):
     title=meta.get('qianwen_upload_title') or filename(meta['title'])+'-'+job.name
     if not title.endswith('-'+job.name):raise RuntimeError('无法确认千问记录归属，未执行删除')
     require_login_if_visible(page)
-    page.get_by_text('最近记录',exact=True).wait_for(timeout=30000)
+    page.get_by_text('最近记录',exact=False).first.wait_for(timeout=30000)
     rows=page.locator('[data-e2e-test-id="folders_item_div"]').filter(has=page.get_by_text(title,exact=True))
     try:expect(rows).to_have_count(1,timeout=15000)
     except AssertionError as error:raise RuntimeError('未能唯一定位对应千问记录，未删除本机文件。记录可能已被手动删除或不在最近记录中，请检查千问页面。') from error

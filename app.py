@@ -115,6 +115,8 @@ def list_jobs():
         try:
             item = json.loads(path.read_text())
             item['id'] = path.parent.name
+            deletion=path.parent/'delete-result.json'
+            if deletion.exists():item['deletion_result']=json.loads(deletion.read_text())
             title_path = path.parent / 'page-title.json'
             if not item.get('title') and title_path.exists():
                 item['title'] = json.loads(title_path.read_text()).get('title')
@@ -360,7 +362,16 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == '/qianwen/login':
                 return self.reply(200, open_login())
             deletion=re.fullmatch(r'/delete/([0-9a-f]{12})',self.path)
-            if deletion:return self.reply(200, delete_task(deletion.group(1)))
+            if deletion:
+                ident=deletion.group(1)
+                try:
+                    result=delete_task(ident)
+                except (ValueError,OSError,subprocess.SubprocessError) as error:
+                    folder=WORK/'jobs'/ident
+                    if folder.exists():save_json(folder/'delete-result.json',{'status':'failed','message':'删除失败：'+str(error),'at':time.time()})
+                    raise
+                result['message']='删除成功：任务列表记录、本机文稿及任务文件已清理，对应千问记录已删除（未上传的任务无需云端删除）。'
+                return self.reply(200,result)
             match = re.fullmatch(r'/reveal/([0-9a-f]{12})', self.path)
             if match:
                 reveal_document(match.group(1))

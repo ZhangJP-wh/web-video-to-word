@@ -144,6 +144,20 @@ class CloudDeleteSafetyTests(unittest.TestCase):
             browser.delete_cloud_record(page,Path('/tmp/123456abcdef'),{'qianwen_submitted':True,'qianwen_upload_title':'同名视频'},lambda *args:None)
         page.get_by_role.assert_not_called()
 
+    def test_recent_records_counter_does_not_block_deletion(self):
+        from unittest.mock import MagicMock,patch
+        import qianwen_browser as browser
+        page=UploadConfirmationTests().page();meta={'title':'测试','qianwen_submitted':True}
+        # The actual header is “最近记录 + 4”; exact matching must not be used.
+        def text_locator(text,exact=False):
+            if text=='最近记录' and exact:raise AssertionError('header includes counter')
+            return MagicMock()
+        page.get_by_text.side_effect=text_locator
+        with patch('playwright.sync_api.expect'):
+            browser.delete_cloud_record(page,Path('/tmp/123456abcdef'),meta,lambda *args:None)
+        self.assertTrue(meta['qianwen_cloud_deleted'])
+        page.get_by_text.assert_any_call('最近记录',exact=False)
+
     def test_ambiguous_record_never_clicks_delete(self):
         from unittest.mock import MagicMock,patch
         import qianwen_browser as browser

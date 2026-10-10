@@ -143,6 +143,14 @@ class LocalUploadTests(unittest.TestCase):
             self.assertFalse((Path(tmp)/'jobs').exists())
 
 class SynchronizedDeleteTests(unittest.TestCase):
+    def test_failed_deletion_result_survives_task_list_refresh(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work=Path(tmp);folder=work/'jobs/123456abcdef';folder.mkdir(parents=True)
+            (folder/'job.json').write_text(json.dumps({'state':'completed','created_at':1}))
+            (folder/'delete-result.json').write_text(json.dumps({'status':'failed','message':'删除失败：登录失效'}))
+            with patch.object(app,'WORK',work):
+                self.assertEqual(app.list_jobs()[0]['deletion_result']['message'],'删除失败：登录失效')
+
     def test_successful_delete_removes_task_from_list(self):
         import shutil
         from types import SimpleNamespace
