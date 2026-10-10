@@ -24,6 +24,31 @@ generations = {}
 cancelled = set()
 login_process = None
 active_readers = {}
+deletion_queue = None
+deletion_queue_lock = threading.Lock()
+
+def get_deletion_queue():
+    global deletion_queue
+    with deletion_queue_lock:
+        if deletion_queue is None:
+            from deletion_queue import DeletionQueue
+            def failed(ident,error):
+                folder=WORK/'jobs'/ident
+                meta=json.loads((folder/'job.json').read_text()) if (folder/'job.json').exists() else {}
+                report=deletion_report(False,meta.get('qianwen_delete_result','deleted' if meta.get('qianwen_cloud_deleted') else 'failed'),error)
+                if folder.exists():
+                    (folder/'.deleting').unlink(missing_ok=True)
+                    save_json(folder/'delete-result.json',report)
+                return report
+            def stop_target(ident):
+                from task_controls import reader_pids,stop_reader
+                with mutex:
+                    generation=generations.get(ident)
+                    if generation:cancelled.add((ident,generation))
+                    for pid in reader_pids(ROOT,WORK/'jobs'/ident):stop_reader(pid)
+            deletion_queue=DeletionQueue(WORK,delete_task,failed,stop_target)
+            deletion_queue.start()
+        return deletion_queue
 
 
 def document_path(ident):
@@ -98,7 +123,7 @@ def start_title_lookup(ident, url):
 def resume_jobs():
     # After restarting the web service, leave an existing reader process running.
     for item in sorted(list_jobs(), key=lambda item: item['created_at']):
-        if item.get('state') not in ('completed', 'failed', 'login_required'):
+        if item.get('state') not in ('completed', 'failed', 'login_required') and not (WORK/'jobs'/item['id']/'.deleting').exists():
             pending.add(item['id'])
             generation=__import__('uuid').uuid4().hex
             generations[item['id']]=generation
@@ -138,6 +163,8 @@ def worker():
         log=None
         try:
             folder = WORK / 'jobs' / ident
+            while deletion_queue is not None and deletion_queue.has_pending() and folder.exists() and not (folder/'.deleting').exists():
+                time.sleep(.5)
             from runtime_compat import file_lock as fcntl
             if (ident,generation) in cancelled or not folder.exists():continue
             with (folder / '.prepare.lock').open('a') as lock:
@@ -350,6 +377,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, login_status())
         if self.path == '/jobs':
             return self.reply(200, list_jobs())
+        if self.path == '/deletions':
+            return self.reply(200, get_deletion_queue().results())
         match = re.fullmatch(r'/(document|preview)/([0-9a-f]{12})', self.path)
         if match:
             kind, ident = match.groups()
@@ -389,7 +418,7 @@ class Handler(BaseHTTPRequestHandler):
             if deletion:
                 ident=deletion.group(1)
                 try:
-                    result=delete_task(ident)
+                    report=get_deletion_queue().submit(ident)
                 except (ValueError,OSError,subprocess.SubprocessError) as error:
                     folder=WORK/'jobs'/ident
                     meta=json.loads((folder/'job.json').read_text(encoding="utf-8")) if (folder/'job.json').exists() else {}
@@ -397,7 +426,7 @@ class Handler(BaseHTTPRequestHandler):
                     report=deletion_report(False,cloud_status,str(error))
                     if folder.exists():save_json(folder/'delete-result.json',report)
                     return self.reply(400,{'error':str(error),'deletion_result':report})
-                return self.reply(200,result)
+                return self.reply(202,{'ok':True,'deletion_result':report})
             match = re.fullmatch(r'/reveal/([0-9a-f]{12})', self.path)
             if match:
                 reveal_document(match.group(1))
@@ -410,6 +439,7 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == '__main__':
     (WORK / 'jobs').mkdir(parents=True, exist_ok=True)
     server = ThreadingHTTPServer((HOST, PORT), Handler)
+    get_deletion_queue()
     resume_jobs()
     threading.Thread(target=worker, daemon=True).start()
     print(f'网页视频转语音识别文字稿（由千问提供支持）：http://{HOST}:{PORT}', flush=True)
