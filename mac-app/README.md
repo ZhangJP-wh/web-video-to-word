@@ -9,3 +9,5 @@
 从源码构建：需要 Apple Command Line Tools，运行 `./build.command`。源码适用于 Mac，生成的二进制架构取决于构建机器。没有 Apple Developer ID 公证，首次启动可能需要系统允许打开。
 
 当前只验证编译、Info.plist 和本地临时签名；上传、登录与完整处理需实际验收。原有 Chrome 入口保留，方便回退。
+
+应用使用原有蓝底“视频转文稿”图标。WKWebView 空白处菜单可能只有重新加载；文字选择与输入框可使用 Command-C/V/X/A，浏览器扩展菜单不适用于这个窗口。
