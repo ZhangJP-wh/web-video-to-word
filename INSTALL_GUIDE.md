@@ -550,7 +550,7 @@ body{font:16px/1.7 -apple-system,BlinkMacSystemFont,sans-serif;color:#24322d;bac
 #qianwen-login{background:#004B93;border-color:#004B93}#qianwen-login:hover{background:#003B75}#form button{background:#D65A00;border-color:#D65A00}#form button:hover{background:#B94D00}</style>
 <h1>网页视频转语音识别文字稿（由千问提供支持）</h1>
 <p>粘贴网页链接，后台下载并默认交给千问识别语音、区分发言人，生成带时间戳、以视频标题命名的 Word。</p>
-<form id="form" autocomplete="off"><input id="url" autocomplete="off" aria-label="音视频网页链接" type="url" required placeholder="粘贴 YouTube、哔哩哔哩等音视频网页链接"><button>开始生成文稿</button></form>
+<form id="form" autocomplete="off"><input id="url" autocomplete="off" aria-label="音视频网页链接" type="url" required placeholder="粘贴YouTube、B站、小宇宙等音视频网页链接"><button>开始生成文稿</button></form>
 <p class="actions"><button type="button" id="qianwen-login">千问登录</button><span id="login-status" role="status">正在读取千问登录状态…</span></p><p id="message" role="status"></p>
 <p class="notice">本文稿内容为语音模型识别结果，需要注意：可能有错别字和识别不准确之处。</p>
 <p><small>Word 保存到“下载/网页视频转语音识别文字稿（由千问提供支持）”。音频将上传千问服务器；需要登录时点击上方“千问登录”。完成后直接查看或打开所在位置。Word 完整性检查通过后自动将原音视频移入废纸篓并清理临时音轨。</small></p>
@@ -2017,7 +2017,7 @@ exit $result
   "qianwen_browser.py": "3f2f4655e7ddd3dfdc4a19b85d4b0b25959803baee841cd43523e55fc5c367b4",
   "测试千问后台流程.command": "365ea7c455b38238341c79e3f2db6531de8053c34a909c4a210a19248a680c8c",
   "smoke_qianwen.py": "5a41ae58b74a8f2edaaadeb36c60235646989c5bdb2aa49e17d72dfd8778f71e",
-  "index.html": "e9834483039d7f85b4495a593575a80b263dc9a2998d29a9b33165fe28cd98e5",
+  "index.html": "7a96b77ad812eb08159432d66d118916e31dea5f775996a5d68a41991f9fe9cc",
   "停用自动启动.command": "0c2353cd41fd56b737864d09d6fe83f8b7d62cc1c51757e86fe0bc6bbd76b682",
   "launch_service.py": "2cadb70ee153b678af24a6eb9e911d7e6e2ae4906ca8d3115ff8bb723d516dba",
   "requirements.txt": "8f1f858b32310780d785ef1d196205c8c85a0c44efbb9fe4124bf7e98c9a96d3",
