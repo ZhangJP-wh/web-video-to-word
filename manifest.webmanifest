@@ -1,0 +1,17 @@
+{
+  "name": "网页视频转语音识别文字稿",
+  "short_name": "视频转文字",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#F2F6FF",
+  "theme_color": "#245491",
+  "icons": [
+    {
+      "src": "/icons/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

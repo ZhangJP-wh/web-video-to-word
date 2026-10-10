@@ -340,6 +340,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(403, {'error': '仅允许本机访问'})
         if self.path == '/':
             return self.reply(200, (ROOT / 'index.html').read_bytes(), 'text/html; charset=utf-8')
+        if self.path == '/manifest.webmanifest':
+            return self.reply(200, (ROOT / 'manifest.webmanifest').read_bytes(), 'application/manifest+json; charset=utf-8')
+        if self.path == '/icons/app-icon.svg':
+            return self.reply(200, (ROOT / 'icons' / 'app-icon.svg').read_bytes(), 'image/svg+xml; charset=utf-8')
         if self.path == '/health':
             return self.reply(200, {'ok': True, 'project': str(ROOT), 'pid': os.getpid(), 'engines': ['qianwen'], 'task_controls': True, 'local_upload': True, 'cloud_delete': True})
         if self.path == '/qianwen/status':
