@@ -170,6 +170,14 @@ def main(argv=None):
         run([python, '-c', 'from playwright.sync_api import sync_playwright\nwith sync_playwright() as p:\n b=p.chromium.launch(); b.close()'])
         run([python, '-m', 'unittest', *TESTS, '-q'])
     if not args.no_start:
+        # Bootstrap runs under system Python; Windows process verification uses
+        # psutil installed inside the project venv, never the global environment.
+        if platform.system() == 'Windows' and Path(sys.prefix).resolve() != (ROOT/'.venv').resolve():
+            command = [python, ROOT/'install.py', '--start-only', '--port', str(args.port)]
+            if args.open:
+                command.append('--open')
+            run(command)
+            return
         start_service(python, args.port)
         url = f'http://127.0.0.1:{args.port}/'
         print(f'工具地址：{url}\n请点击网页“登录或打开千问”，由本人完成账号登录/验证码。健康检查不代表已登录或云端转写成功。')

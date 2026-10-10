@@ -1002,6 +1002,14 @@ def main(argv=None):
         run([python, '-c', 'from playwright.sync_api import sync_playwright\nwith sync_playwright() as p:\n b=p.chromium.launch(); b.close()'])
         run([python, '-m', 'unittest', *TESTS, '-q'])
     if not args.no_start:
+        # Bootstrap runs under system Python; Windows process verification uses
+        # psutil installed inside the project venv, never the global environment.
+        if platform.system() == 'Windows' and Path(sys.prefix).resolve() != (ROOT/'.venv').resolve():
+            command = [python, ROOT/'install.py', '--start-only', '--port', str(args.port)]
+            if args.open:
+                command.append('--open')
+            run(command)
+            return
         start_service(python, args.port)
         url = f'http://127.0.0.1:{args.port}/'
         print(f'工具地址：{url}\n请点击网页“登录或打开千问”，由本人完成账号登录/验证码。健康检查不代表已登录或云端转写成功。')
@@ -3134,7 +3142,7 @@ exit $result
   "index.html": "6dd9e443ec67aed7db67deeaec104d47a4306608018c1e71e02dd4de2d5590b2",
   "install-windows.cmd": "181344afef4643cc95c8098d5839cdf8df98963e8d05a13991deb41c8a38c2ed",
   "install-windows.ps1": "41b154fee7d2df1352ad384de1b942b67bcc81a483e61542c7f7b1454119dcba",
-  "install.py": "73f34616d8af9fc38e555722d63002224178ccf5e686ab1b36aa7bc05e8f8c37",
+  "install.py": "76400d914fe51eada8a704ee5e18d1310d003daf564b163443aa6dc22c63e140",
   "install.sh": "abead2c9d17bc14579905cab745be4220776c7d954a96042028c7b4855164826",
   "launch_service.py": "2cadb70ee153b678af24a6eb9e911d7e6e2ae4906ca8d3115ff8bb723d516dba",
   "qianwen_browser.py": "4dec4081b618300e55be1749778cc0129e71c7438cc170d56086baa953ff1a7e",
