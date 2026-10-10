@@ -60,8 +60,9 @@ def require_login_if_visible(page):
         if prompt.is_visible():
             auth_state('required')
             raise LoginRequired('千问需要重新登录或完成验证。请点击页面上的“千问登录”，完成后重试任务。')
-    buttons=page.get_by_role('button',name=re.compile('^(登录|登录/注册|立即登录)$'))
-    if any(button.is_visible() for button in buttons.all()):
+    buttons=[button for name in ('登录','登录/注册','立即登录')
+             for button in page.get_by_role('button',name=name,exact=True).all()]
+    if any(button.is_visible() for button in buttons):
         auth_state('required')
         raise LoginRequired('千问登录已失效，请点击“千问登录”重新登录后重试。')
 

@@ -63,4 +63,13 @@ class TaskControlTests(unittest.TestCase):
             qianwen_browser.require_login_if_visible(page)
         state.assert_called_once_with('required')
 
+    def test_login_buttons_use_exact_names(self):
+        from unittest.mock import MagicMock
+        page=MagicMock()
+        page.get_by_role.return_value.filter.return_value.all.return_value=[]
+        page.get_by_role.return_value.all.return_value=[]
+        qianwen_browser.require_login_if_visible(page)
+        for name in ('登录','登录/注册','立即登录'):
+            page.get_by_role.assert_any_call('button',name=name,exact=True)
+
 if __name__=='__main__':unittest.main()

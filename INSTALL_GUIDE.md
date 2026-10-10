@@ -60,7 +60,7 @@
 
 ## 验证说明
 
-本次 18 项测试通过，其中云端识别返回结果在单元测试中模拟；旧本地推理断点测试已移除。此前本机20秒音频的千问后台完整流程约46秒，不能推断长视频速度或识别准确率。未在另一台全新 Mac 完成安装实测。
+本次 19 项测试通过，其中云端识别返回结果在单元测试中模拟；旧本地推理断点测试已移除。此前本机20秒音频的千问后台完整流程约46秒，不能推断长视频速度或识别准确率。未在另一台全新 Mac 完成安装实测。
 
 ## 主要文件
 
@@ -775,8 +775,9 @@ def require_login_if_visible(page):
         if prompt.is_visible():
             auth_state('required')
             raise LoginRequired('千问需要重新登录或完成验证。请点击页面上的“千问登录”，完成后重试任务。')
-    buttons=page.get_by_role('button',name=re.compile('^(登录|登录/注册|立即登录)$'))
-    if any(button.is_visible() for button in buttons.all()):
+    buttons=[button for name in ('登录','登录/注册','立即登录')
+             for button in page.get_by_role('button',name=name,exact=True).all()]
+    if any(button.is_visible() for button in buttons):
         auth_state('required')
         raise LoginRequired('千问登录已失效，请点击“千问登录”重新登录后重试。')
 
@@ -1724,6 +1725,15 @@ class TaskControlTests(unittest.TestCase):
             qianwen_browser.require_login_if_visible(page)
         state.assert_called_once_with('required')
 
+    def test_login_buttons_use_exact_names(self):
+        from unittest.mock import MagicMock
+        page=MagicMock()
+        page.get_by_role.return_value.filter.return_value.all.return_value=[]
+        page.get_by_role.return_value.all.return_value=[]
+        qianwen_browser.require_login_if_visible(page)
+        for name in ('登录','登录/注册','立即登录'):
+            page.get_by_role.assert_any_call('button',name=name,exact=True)
+
 if __name__=='__main__':unittest.main()
 
 ```
@@ -1816,7 +1826,7 @@ exit $result
 ```text
 {
   "test_reader.py": "71fc155ea2c8eef538b119ee78a2a63118c02308aadde680f6f483829d036626",
-  "qianwen_browser.py": "cf35a52300ba890be471dad2b81181ef2bed6203a86236d26cdbaffec62d6302",
+  "qianwen_browser.py": "f30408557e01d5ea5345f9d50e04cb5f9a1604a7178fa2bc1e444d752468d977",
   "测试千问后台流程.command": "365ea7c455b38238341c79e3f2db6531de8053c34a909c4a210a19248a680c8c",
   "smoke_qianwen.py": "5a41ae58b74a8f2edaaadeb36c60235646989c5bdb2aa49e17d72dfd8778f71e",
   "index.html": "05131b2ec6b632fdfcb5da59d1fbd08a08591958b20a491857c6ba61f1ece0f2",
@@ -1826,7 +1836,7 @@ exit $result
   "启动工具.command": "f67940511e7be84f96ef4eadc60dee14b08668d185f06f94cd03a02ebd3d59ca",
   "首次安装.command": "3386934c6c62f0983f9d9ee8541bf0d73a4fa671be319201efa649bf71c28d32",
   "task_controls.py": "a420be2ff8a6b4fc833d126f235e8a249c521e2a8c30435b36ebdf7426579084",
-  "test_task_controls.py": "7a07b1d54e383405a9914e69503319854a8cd543d7348c618e09a5744cc0ce30",
+  "test_task_controls.py": "2a0d1da5b7de5a52a5d3c0257dd989341bccf00ba3cda5fd57fe98db25842644",
   "reader.py": "9ebeb8e8987dbfa5bb8acda6fb4aecfa01fc722f46742d43564be1133006bd68",
   "切换千问并清理本地模型.command": "39ae5c718d5854f9fec85e13cd2c6fc683cb3c07844dffdd29697f97cfeeaaf4",
   "smoke_qianwen_runner.py": "10c6047ad2b7ae20cac3945b41f8afdc047975fd2da3ef0dc576f3753a512409",
