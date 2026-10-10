@@ -21,11 +21,12 @@ jobs:
           $tokens = $null; $errors = $null
           [System.Management.Automation.Language.Parser]::ParseFile("$PWD/install-windows.ps1", [ref]$tokens, [ref]$errors) | Out-Null
           if ($errors.Count) { throw ($errors | Out-String) }
-      - name: Full installer and repeated startup
+      - name: Full PowerShell installer
+        shell: powershell
+        run: ./install-windows.ps1 -Port 18767
+      - name: Repeated startup and health
         shell: pwsh
         run: |
-          python install.py --port 18767
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           ./.venv/Scripts/python.exe install.py --start-only --port 18767
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           $health = Invoke-RestMethod http://127.0.0.1:18767/health

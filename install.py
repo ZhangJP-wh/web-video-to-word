@@ -26,6 +26,8 @@ def check_environment():
     system, machine = platform.system(), platform.machine().lower()
     if not ((system == 'Darwin' and machine == 'arm64') or (system == 'Windows' and machine in ('amd64', 'x86_64'))):
         raise RuntimeError('支持原生 Apple Silicon Mac 或 Windows 10/11 x64；不支持 Rosetta、Intel Mac、Windows ARM/32位和 Linux。')
+    if system == 'Windows' and sys.maxsize <= 2**32:
+        raise RuntimeError('Windows 需要64位 Python 3.12，请安装官方 x64 安装包。')
     if system == 'Windows' and sys.getwindowsversion().build < 17763:
         raise RuntimeError('需要 Windows 10 1809 或更新版本。')
     if sys.version_info[:2] != (3, 12):
@@ -75,6 +77,24 @@ def validate_health(data):
         raise RuntimeError('端口上的服务不是本目录的千问工具。请关闭对应旧服务，或使用 --port 选择空闲端口；未停止任何进程。')
 
 
+def started_service_matches(pid, launcher_pid):
+    if pid == launcher_pid:
+        return True
+    if platform.system() != 'Windows':
+        return False
+    # Windows venv python.exe redirects to a child interpreter. Verify ancestry,
+    # script and working directory rather than accepting an arbitrary PID.
+    import psutil
+    try:
+        process = psutil.Process(pid)
+        args = process.cmdline()
+        return (any(p.pid == launcher_pid for p in process.parents()) and
+                len(args) >= 2 and Path(args[1]).resolve() == ROOT / 'app.py' and
+                Path(process.cwd()).resolve() == ROOT)
+    except (psutil.NoSuchProcess, psutil.AccessDenied, OSError, ValueError):
+        return False
+
+
 def start_service(python, port):
     try:
         data = health(port)
@@ -108,7 +128,7 @@ def start_service(python, port):
             continue
         try:
             validate_health(data)
-            if data.get('pid') != child.pid:
+            if not started_service_matches(data.get('pid'), child.pid):
                 raise RuntimeError('健康检查的进程与本次启动不一致，请检查端口。')
         except RuntimeError:
             child.terminate()

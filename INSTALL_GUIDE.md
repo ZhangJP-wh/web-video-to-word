@@ -786,7 +786,7 @@ function Find-Python {
     if ($command -and $command.Source -notlike '*WindowsApps*') { $candidates += $command.Source }
     foreach ($candidate in $candidates) {
         if (Test-Path -LiteralPath $candidate) {
-            & $candidate -c 'import sys,platform; sys.exit(not (sys.version_info[:2]==(3,12) and platform.machine().lower() in (''amd64'',''x86_64'')))' 2>$null
+            & $candidate -c 'import sys,platform; sys.exit(not (sys.version_info[:2]==(3,12) and sys.maxsize>2**32 and platform.machine().lower() in (''amd64'',''x86_64'')))' 2>$null
             if ($LASTEXITCODE -eq 0) { return $candidate }
         }
     }
@@ -858,6 +858,8 @@ def check_environment():
     system, machine = platform.system(), platform.machine().lower()
     if not ((system == 'Darwin' and machine == 'arm64') or (system == 'Windows' and machine in ('amd64', 'x86_64'))):
         raise RuntimeError('支持原生 Apple Silicon Mac 或 Windows 10/11 x64；不支持 Rosetta、Intel Mac、Windows ARM/32位和 Linux。')
+    if system == 'Windows' and sys.maxsize <= 2**32:
+        raise RuntimeError('Windows 需要64位 Python 3.12，请安装官方 x64 安装包。')
     if system == 'Windows' and sys.getwindowsversion().build < 17763:
         raise RuntimeError('需要 Windows 10 1809 或更新版本。')
     if sys.version_info[:2] != (3, 12):
@@ -907,6 +909,24 @@ def validate_health(data):
         raise RuntimeError('端口上的服务不是本目录的千问工具。请关闭对应旧服务，或使用 --port 选择空闲端口；未停止任何进程。')
 
 
+def started_service_matches(pid, launcher_pid):
+    if pid == launcher_pid:
+        return True
+    if platform.system() != 'Windows':
+        return False
+    # Windows venv python.exe redirects to a child interpreter. Verify ancestry,
+    # script and working directory rather than accepting an arbitrary PID.
+    import psutil
+    try:
+        process = psutil.Process(pid)
+        args = process.cmdline()
+        return (any(p.pid == launcher_pid for p in process.parents()) and
+                len(args) >= 2 and Path(args[1]).resolve() == ROOT / 'app.py' and
+                Path(process.cwd()).resolve() == ROOT)
+    except (psutil.NoSuchProcess, psutil.AccessDenied, OSError, ValueError):
+        return False
+
+
 def start_service(python, port):
     try:
         data = health(port)
@@ -940,7 +960,7 @@ def start_service(python, port):
             continue
         try:
             validate_health(data)
-            if data.get('pid') != child.pid:
+            if not started_service_matches(data.get('pid'), child.pid):
                 raise RuntimeError('健康检查的进程与本次启动不一致，请检查端口。')
         except RuntimeError:
             child.terminate()
@@ -2832,6 +2852,20 @@ class CompatibilityTests(unittest.TestCase):
         with patch.object(install.platform,'system',return_value='Windows'), patch.object(install.platform,'machine',return_value='AMD64'), patch.object(install.sys,'version_info',(3,12)), patch.object(install.sys,'getwindowsversion',create=True,return_value=MagicMock(build=19045)), patch.object(install.shutil,'which',return_value='node.exe'), patch.object(install.subprocess,'check_output',return_value=json.dumps({'version':'24.0.0','arch':'x64'})):
             install.check_environment()
 
+    def test_windows_service_redirector_identity(self):
+        fake = MagicMock()
+        process = fake.Process.return_value
+        process.parents.return_value = [MagicMock(pid=123)]
+        process.cmdline.return_value = ['python.exe', str(install.ROOT/'app.py')]
+        process.cwd.return_value = str(install.ROOT)
+        with patch.object(install.platform,'system',return_value='Windows'), patch.dict(sys.modules, {'psutil':fake}):
+            self.assertTrue(install.started_service_matches(456,123))
+            process.cmdline.return_value = ['python.exe', str(install.ROOT/'other.py')]
+            self.assertFalse(install.started_service_matches(456,123))
+            process.cmdline.return_value = ['python.exe', str(install.ROOT/'app.py')]
+            process.parents.return_value = [MagicMock(pid=999)]
+            self.assertFalse(install.started_service_matches(456,123))
+
     def test_windows_arm_rejected(self):
         with patch.object(install.platform,'system',return_value='Windows'), patch.object(install.platform,'machine',return_value='ARM64'):
             with self.assertRaises(RuntimeError):install.check_environment()
@@ -3099,8 +3133,8 @@ exit $result
   "cloud_migration.py": "cc5c02b953f404a280f0230e836ff9a5fe04f3e7002361ef9b8b8cdc244c07a0",
   "index.html": "6dd9e443ec67aed7db67deeaec104d47a4306608018c1e71e02dd4de2d5590b2",
   "install-windows.cmd": "181344afef4643cc95c8098d5839cdf8df98963e8d05a13991deb41c8a38c2ed",
-  "install-windows.ps1": "f469304d41ccb402e1b74e9915cae6f851bb272c374b054d861155b56c3416ae",
-  "install.py": "8bdbd65f6029cd942b72bdf3ec2bfe2f453f44adfbfe9c09d3942d7538d04b29",
+  "install-windows.ps1": "41b154fee7d2df1352ad384de1b942b67bcc81a483e61542c7f7b1454119dcba",
+  "install.py": "73f34616d8af9fc38e555722d63002224178ccf5e686ab1b36aa7bc05e8f8c37",
   "install.sh": "abead2c9d17bc14579905cab745be4220776c7d954a96042028c7b4855164826",
   "launch_service.py": "2cadb70ee153b678af24a6eb9e911d7e6e2ae4906ca8d3115ff8bb723d516dba",
   "qianwen_browser.py": "4dec4081b618300e55be1749778cc0129e71c7438cc170d56086baa953ff1a7e",
@@ -3115,7 +3149,7 @@ exit $result
   "test_install.py": "5ecdd4f27fc1761c89a27fd5d623377f05315a318cbb622bbd615686798b4941",
   "test_qianwen.py": "9fb2902cabfbb02f36b5ce3bed5c96205ba05b6b390833cae97e10ecafd78473",
   "test_reader.py": "d76beb93692d593e8d9be5d0d6b2cd2a18662fda323897053f23db5726aeaaa7",
-  "test_runtime_compat.py": "3f7b61ddad4064df2704313451db4e29a28bdadb140b14c0ee2020eae177cc2b",
+  "test_runtime_compat.py": "1f0ae09861bb4f5ffa6bd7e6af237512c4e93229ef3298c80471a2fe287754d6",
   "test_task_controls.py": "4c7ef80bd87e091c6140d660cacd406f932048ba89809b4a9236e1b327d3b9b5",
   "tools/build_guides.py": "3aae860f2e5101aae45559fa2a0494245be405a84c9089b9e5c8316e2a4a9d56",
   "停用自动启动.command": "0c2353cd41fd56b737864d09d6fe83f8b7d62cc1c51757e86fe0bc6bbd76b682",

@@ -5,7 +5,7 @@
   "markdown_source_roundtrip": true,
   "word_full_source_roundtrip": true,
   "unit_tests": {
-    "passed": 66,
+    "passed": 67,
     "environment": "existing Apple Silicon macOS, Python 3.12; ASR mocked"
   },
   "pip_check": true,
@@ -36,7 +36,7 @@
   ],
   "windows": {
     "implemented": true,
-    "github_actions": "pending",
+    "github_actions": "66 tests and Chromium passed; correcting Windows venv redirector PID verification; full PowerShell rerun pending",
     "fresh_physical_pc_tested": false,
     "winget_install_branch_tested": false
   }

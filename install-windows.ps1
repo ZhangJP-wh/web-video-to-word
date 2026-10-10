@@ -18,7 +18,7 @@ function Find-Python {
     if ($command -and $command.Source -notlike '*WindowsApps*') { $candidates += $command.Source }
     foreach ($candidate in $candidates) {
         if (Test-Path -LiteralPath $candidate) {
-            & $candidate -c 'import sys,platform; sys.exit(not (sys.version_info[:2]==(3,12) and platform.machine().lower() in (''amd64'',''x86_64'')))' 2>$null
+            & $candidate -c 'import sys,platform; sys.exit(not (sys.version_info[:2]==(3,12) and sys.maxsize>2**32 and platform.machine().lower() in (''amd64'',''x86_64'')))' 2>$null
             if ($LASTEXITCODE -eq 0) { return $candidate }
         }
     }

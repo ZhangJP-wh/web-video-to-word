@@ -30,6 +30,20 @@ class CompatibilityTests(unittest.TestCase):
         with patch.object(install.platform,'system',return_value='Windows'), patch.object(install.platform,'machine',return_value='AMD64'), patch.object(install.sys,'version_info',(3,12)), patch.object(install.sys,'getwindowsversion',create=True,return_value=MagicMock(build=19045)), patch.object(install.shutil,'which',return_value='node.exe'), patch.object(install.subprocess,'check_output',return_value=json.dumps({'version':'24.0.0','arch':'x64'})):
             install.check_environment()
 
+    def test_windows_service_redirector_identity(self):
+        fake = MagicMock()
+        process = fake.Process.return_value
+        process.parents.return_value = [MagicMock(pid=123)]
+        process.cmdline.return_value = ['python.exe', str(install.ROOT/'app.py')]
+        process.cwd.return_value = str(install.ROOT)
+        with patch.object(install.platform,'system',return_value='Windows'), patch.dict(sys.modules, {'psutil':fake}):
+            self.assertTrue(install.started_service_matches(456,123))
+            process.cmdline.return_value = ['python.exe', str(install.ROOT/'other.py')]
+            self.assertFalse(install.started_service_matches(456,123))
+            process.cmdline.return_value = ['python.exe', str(install.ROOT/'app.py')]
+            process.parents.return_value = [MagicMock(pid=999)]
+            self.assertFalse(install.started_service_matches(456,123))
+
     def test_windows_arm_rejected(self):
         with patch.object(install.platform,'system',return_value='Windows'), patch.object(install.platform,'machine',return_value='ARM64'):
             with self.assertRaises(RuntimeError):install.check_environment()
