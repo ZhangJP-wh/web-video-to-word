@@ -60,6 +60,8 @@ def export_audio(audio, job, meta, save):
         with browser_context(p) as context:
             page = context.pages[0] if context.pages else context.new_page()
             page.goto(meta.get('qianwen_url') or URL)
+            page.screenshot(path=str(job/'browser-diagnostic.png'), full_page=True)
+            (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
             if not meta.get('qianwen_url'):
                 try:
                     page.get_by_text('中英文自由说', exact=True).wait_for(timeout=30000)
@@ -79,12 +81,21 @@ def export_audio(audio, job, meta, save):
                 title = upload.stem
                 deadline = time.monotonic() + 6 * 3600
                 while time.monotonic() < deadline:
-                    page.locator('.rowTitle .titleContent').filter(has_text=title).first.click(timeout=10000)
-                    if page.get_by_role('button', name='导出', exact=True).count():
-                        meta['qianwen_url'] = page.url; save(job/'job.json', meta); break
-                    time.sleep(5)
+                    from playwright.sync_api import TimeoutError as BrowserTimeout
+                    if '/efficiency/doc/transcripts/' not in page.url:
+                        page.get_by_text(title, exact=True).filter(visible=True).first.click(timeout=10000)
+                    try:
+                        page.get_by_role('button', name='导出', exact=True).wait_for(timeout=10000)
+                    except BrowserTimeout:
+                        time.sleep(5)
+                        continue
+                    meta['qianwen_url'] = page.url; save(job/'job.json', meta)
+                    break
                 else:
                     raise RuntimeError('千问处理超过等待上限，保留媒体以便检查')
+            page.get_by_role('button', name='导出', exact=True).wait_for(timeout=60000)
+            page.screenshot(path=str(job/'browser-diagnostic.png'), full_page=True)
+            (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
             page.get_by_role('button', name='导出', exact=True).click()
             panel = page.get_by_role('tooltip')
             checks = panel.get_by_role('checkbox')

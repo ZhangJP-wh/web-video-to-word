@@ -168,13 +168,13 @@ curl --fail --location 'https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen3-AS
 
 ### 千问网页识别（实验性可选功能）
 
-首次登录完成后，可双击“测试千问后台流程.command”。它从已有任务的音轨截取20秒，在无窗口浏览器中转写、导出并生成测试Word，结果保存到 work/qianwen-smoke-test.json。没有现成音轨时需要先下载一个测试视频。此操作不终止正在识别的任务，不删除完整原媒体。当前版本登录失效不会自动弹出窗口；失败后在页面查看错误，再双击“配置千问登录.command”重新登录并重试原链接。
+首次登录完成后，可双击“测试千问后台流程.command”。测试窗口可保留在后台十分钟，以便在需要时触发重试；完成后可关闭。它从已有任务的音轨截取20秒，在无窗口浏览器中转写、导出并生成测试Word，结果保存到 work/qianwen-smoke-test.json。没有现成音轨时需要先下载一个测试视频。此操作不终止正在识别的任务，不删除完整原媒体。当前版本登录失效不会自动弹出窗口；失败后在页面查看错误，再双击“配置千问登录.command”重新登录并重试原链接。
 
 页面的识别方式可以选择“千问网页”。首次双击项目中的“配置千问登录.command”，安装官方 Playwright/Chromium 后，在工具专用浏览器中登录千问，回到终端按回车。登录资料保存在本机 work/qianwen-browser-profile，不上传 GitHub。后续任务使用无窗口浏览器，音频会上传千问服务器。
 
 设置固定为中英文自由说、不翻译、多人讨论；只导出原文 Word，必须包含发言人和时间戳。导出后生成本项目格式的 Word，并执行原有文档检查和废纸篓清理。千问网页单文件上限为6小时，音频500MB；工具使用64kbps MP3上传。网站额度、验证码、登录失效、页面变化可能中断，此时保留原媒体并显示失败，不绕过验证码、不自动购买额度。
 
-当前验证：已通过 Codex 隐藏浏览器完成20秒音频上传、转写和带发言人/时间戳的原文Word导出；真实导出解析与14项程序测试通过。**专用无窗口浏览器的完整流程尚未实测，不能视为已验证的全自动功能。**首次专用浏览器登录后，应先测试短视频再处理长视频。本地模型仍是默认选项，已有任务不自动切换。
+当前验证：已在本机专用无窗口浏览器中完成全新20秒音频的上传、转写、原文Word导出、最终文档检查和测试媒体移入废纸篓，全流程约46秒；14项程序测试通过。此结果不代表长视频速度或识别准确率，也没有在另一台全新Mac安装实测。新任务页面默认选择千问，可切换本地模型；已有任务不自动切换。
 
 ### 7.1 登录自动启动与异常恢复
 
@@ -594,8 +594,8 @@ if __name__ == '__main__':
 body{font:16px/1.7 -apple-system,BlinkMacSystemFont,sans-serif;color:#24322d;background:#f4f6f3;max-width:920px;margin:48px auto;padding:0 24px}h1{font-size:32px}input,button,.action{font:inherit;padding:10px 14px;border:1px solid #c6d1ca;border-radius:8px}input[type=url]{flex:1;min-width:180px}button,.action{background:#245441;color:white;cursor:pointer;text-decoration:none;display:inline-block}form,.actions{display:flex;gap:12px;flex-wrap:wrap}article{background:white;padding:24px;border:1px solid #e0e7e1;border-radius:12px;margin:20px 0}small{color:#62736b}a{color:#245441}#message{color:#8b4520}.notice{background:#fff3cd;color:#9c0006;padding:14px 18px;border-left:4px solid #b07800;font-weight:bold}.secondary{background:white;color:#245441}
 </style>
 <h1>网页视频转语音识别文字稿</h1>
-<p>粘贴网页链接，后台下载并用 Qwen3-ASR-1.7B 识别语音，自动区分发言人，生成带时间戳、以视频标题命名的 Word。</p>
-<form id="form"><input id="url" aria-label="音视频网页链接" type="url" required placeholder="粘贴 YouTube、哔哩哔哩等音视频网页链接"><select id="engine" aria-label="识别方式"><option value="local">本地模型</option><option value="qianwen">千问网页（需首次配置登录）</option></select><button>开始生成文稿</button></form>
+<p>粘贴网页链接，后台下载并默认交给千问识别语音、区分发言人，生成带时间戳、以视频标题命名的 Word。</p>
+<form id="form"><input id="url" aria-label="音视频网页链接" type="url" required placeholder="粘贴 YouTube、哔哩哔哩等音视频网页链接"><select id="engine" aria-label="识别方式"><option value="qianwen">千问网页</option><option value="local">本地模型（速度较慢）</option></select><button>开始生成文稿</button></form>
 <p id="message" role="status"></p>
 <p class="notice">本文稿内容为语音模型识别结果，需要注意：可能有错别字和识别不准确之处。</p>
 <p><small>Word 保存到“下载/网页视频转语音识别文字稿”。选择千问时，音频将上传千问服务器；首次双击“配置千问登录.command”登录。完成后直接查看或打开所在位置。Word 完整性检查通过后自动将原音视频移入废纸篓并清理临时音轨。</small></p>
@@ -1012,7 +1012,9 @@ def clear_intermediate(job, meta):
         if checkpoint.is_dir() and not checkpoint.is_symlink():
             shutil.rmtree(checkpoint)
     for name in ('blocks.json', '原始转写.txt', 'ChatGPT校对任务.txt', 'chatgpt-result.json',
-                 '网页校对结果.json', 'submitted-result.json', 'result.json', 'speaker-turns.json'):
+                 '网页校对结果.json', 'submitted-result.json', 'result.json', 'speaker-turns.json',
+                 'qianwen-original.docx', 'browser-diagnostic.png', 'browser-diagnostic.txt',
+                 'browser-elements.json', 'browser-rows.json', 'browser-structure.json'):
         (job / name).unlink(missing_ok=True)
     meta['temporary_files_removed'] = True
     save_json(job / 'job.json', meta)
@@ -1384,21 +1386,22 @@ print '确认页面能打开后，这个终端窗口可以关闭。'
 {
   "app.py": "ed518a900637030efbd2512ab549d760c25ff6ec9a94f1449ccb43582e2618e6",
   "check_recovery.py": "7fb929eabc113b13551764fe57caa4f72e7f37f6cded04a75c590fe54e1a3d2d",
-  "index.html": "f4aacf140caeac36a16fa1692a473af9a1c98a547650f323b7b6b1eae8bc601a",
+  "index.html": "339b72f6949c295d5638366727e4a724976cc0aaa74b28325ab17c1cf5fa9941",
   "install.py": "d423b71bfd29145b2b6616da4b6474ad86beec07813eb8c9c36330ed298f19bb",
   "launch_service.py": "2cadb70ee153b678af24a6eb9e911d7e6e2ae4906ca8d3115ff8bb723d516dba",
   "prefetch_model.py": "1c7512114bdb7d49b6a2d8a4199452f5291ad4c04fc4effa4e329b4dab227df3",
-  "qianwen_browser.py": "b28c68ccbd6ca8893e921394d515b6ee2bb693410408e96d8213089df98efccd",
-  "reader.py": "249c75d6bddae4a34db213168606a669dac8308707a7bf7dc20df992fad73ed8",
+  "qianwen_browser.py": "59085a2bf8f03d430bbf00999b6e88a82336316005c0bec7a2360036ef9ad227",
+  "reader.py": "39334c25f04793cdebb4a3af7c0e6aa347da1ff6a62a581266b92d3e624aef4a",
   "requirements.txt": "aa237150a51d1f468ccab935e7ccd3235beddaf60afb9719676dc7f8fbf63e7c",
-  "smoke_qianwen.py": "df0219bddc0456a3634a1e76c40a359060787ced5355e6a5d6d9f4495a37c81c",
+  "smoke_qianwen.py": "5a41ae58b74a8f2edaaadeb36c60235646989c5bdb2aa49e17d72dfd8778f71e",
+  "smoke_qianwen_runner.py": "10c6047ad2b7ae20cac3945b41f8afdc047975fd2da3ef0dc576f3753a512409",
   "test_app.py": "911650ca1bd12c3e87ce499ed1d6bfea8882d8d04ac9e357bb98c067853befc9",
   "test_qianwen.py": "d95d8b70b0948906667d2de5389c00fbef90476554551beee1308e988d5dacc9",
   "test_reader.py": "ea7af8f55bfe4c47023ee9f712b6b078cfc9dd0beedec2325134556970fdc059",
   "停用自动启动.command": "0c2353cd41fd56b737864d09d6fe83f8b7d62cc1c51757e86fe0bc6bbd76b682",
   "启动工具.command": "f67940511e7be84f96ef4eadc60dee14b08668d185f06f94cd03a02ebd3d59ca",
   "启用自动启动.command": "3475ec88b5c035f49adc0a13b3a14a09255ca19aa600a750051f6a8f1d8a07b6",
-  "测试千问后台流程.command": "52d888b7df03ab9b1b22d779628e6526f0e13f68ec09ba3bd1344faa7f61a6c3",
+  "测试千问后台流程.command": "365ea7c455b38238341c79e3f2db6531de8053c34a909c4a210a19248a680c8c",
   "自动恢复测试.command": "e5f7e855d99cd648d6ae2e1382da651e8afb7597f184e08d1661d6daef5cc7f6",
   "配置千问登录.command": "3bc9b14516ab4c169b0cd7a9c595778965167f7f7ce533eab5ad7b3abd835fac",
   "首次安装.command": "3386934c6c62f0983f9d9ee8541bf0d73a4fa671be319201efa649bf71c28d32"
@@ -1726,6 +1729,8 @@ def export_audio(audio, job, meta, save):
         with browser_context(p) as context:
             page = context.pages[0] if context.pages else context.new_page()
             page.goto(meta.get('qianwen_url') or URL)
+            page.screenshot(path=str(job/'browser-diagnostic.png'), full_page=True)
+            (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
             if not meta.get('qianwen_url'):
                 try:
                     page.get_by_text('中英文自由说', exact=True).wait_for(timeout=30000)
@@ -1745,12 +1750,21 @@ def export_audio(audio, job, meta, save):
                 title = upload.stem
                 deadline = time.monotonic() + 6 * 3600
                 while time.monotonic() < deadline:
-                    page.locator('.rowTitle .titleContent').filter(has_text=title).first.click(timeout=10000)
-                    if page.get_by_role('button', name='导出', exact=True).count():
-                        meta['qianwen_url'] = page.url; save(job/'job.json', meta); break
-                    time.sleep(5)
+                    from playwright.sync_api import TimeoutError as BrowserTimeout
+                    if '/efficiency/doc/transcripts/' not in page.url:
+                        page.get_by_text(title, exact=True).filter(visible=True).first.click(timeout=10000)
+                    try:
+                        page.get_by_role('button', name='导出', exact=True).wait_for(timeout=10000)
+                    except BrowserTimeout:
+                        time.sleep(5)
+                        continue
+                    meta['qianwen_url'] = page.url; save(job/'job.json', meta)
+                    break
                 else:
                     raise RuntimeError('千问处理超过等待上限，保留媒体以便检查')
+            page.get_by_role('button', name='导出', exact=True).wait_for(timeout=60000)
+            page.screenshot(path=str(job/'browser-diagnostic.png'), full_page=True)
+            (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
             page.get_by_role('button', name='导出', exact=True).click()
             panel = page.get_by_role('tooltip')
             checks = panel.get_by_role('checkbox')
@@ -1849,11 +1863,11 @@ from qianwen_browser import export_audio
 
 def main():
     result={'passed':False,'started_at':time.time()}
-    ident=hashlib.sha256(b'qianwen-smoke-test-20-seconds').hexdigest()[:12]
+    ident=hashlib.sha256(b'qianwen-smoke-test-20-seconds-v2').hexdigest()[:12]
     job=reader.WORK/'jobs'/ident
     (job/'media').mkdir(parents=True,exist_ok=True)
     meta={'url':'',
-          'title':'千问独立后台测试（仅20秒片段）','name':'千问独立后台测试（仅20秒片段）',
+          'title':'千问独立后台完整测试（仅20秒片段）','name':'千问独立后台完整测试（仅20秒片段）',
           'audio_duration':20,'engine':'qianwen','state':'cloud_transcribing',
           'created_at':time.time()}
     existing=job/'job.json'
@@ -1905,9 +1919,31 @@ if __name__=='__main__':raise SystemExit(main())
 cd -- "${0:A:h}" || exit 1
 export SSL_CERT_FILE=/etc/ssl/cert.pem
 export NODE_EXTRA_CA_CERTS=/etc/ssl/cert.pem
-.venv/bin/python smoke_qianwen.py
+.venv/bin/python smoke_qianwen_runner.py
 result=$?
 read '?测试结束，按回车关闭窗口。'
 exit "$result"
+
+```
+
+### FILE: smoke_qianwen_runner.py
+```python
+"""A bounded local test runner; retry only on an explicit file request."""
+import subprocess
+import sys
+import time
+from pathlib import Path
+ROOT=Path(__file__).resolve().parent
+request=ROOT/'work/qianwen-test-request.txt'
+last=None
+end=time.monotonic()+600
+first=True
+while time.monotonic()<end:
+    current=request.read_text() if request.exists() else ''
+    if first or current!=last:
+        first=False;last=current
+        subprocess.run([sys.executable,str(ROOT/'smoke_qianwen.py')])
+        print('测试结果已保存。保留此窗口即可，接下来十分钟内可后台重试；按Ctrl+C结束。',flush=True)
+    time.sleep(1)
 
 ```

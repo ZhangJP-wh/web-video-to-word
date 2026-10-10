@@ -10,11 +10,11 @@ from qianwen_browser import export_audio
 
 def main():
     result={'passed':False,'started_at':time.time()}
-    ident=hashlib.sha256(b'qianwen-smoke-test-20-seconds').hexdigest()[:12]
+    ident=hashlib.sha256(b'qianwen-smoke-test-20-seconds-v2').hexdigest()[:12]
     job=reader.WORK/'jobs'/ident
     (job/'media').mkdir(parents=True,exist_ok=True)
     meta={'url':'',
-          'title':'千问独立后台测试（仅20秒片段）','name':'千问独立后台测试（仅20秒片段）',
+          'title':'千问独立后台完整测试（仅20秒片段）','name':'千问独立后台完整测试（仅20秒片段）',
           'audio_duration':20,'engine':'qianwen','state':'cloud_transcribing',
           'created_at':time.time()}
     existing=job/'job.json'

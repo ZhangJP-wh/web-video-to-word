@@ -1,6 +1,6 @@
 {
   "date": "2026-10-07",
-  "source_files": 21,
+  "source_files": 22,
   "source_sha256_verified": true,
   "markdown_source_roundtrip": true,
   "word_full_source_roundtrip": true,
@@ -19,5 +19,14 @@
     "cookies",
     ".venv",
     "model caches"
-  ]
+  ],
+  "qianwen_headless_test": {
+    "passed": true,
+    "audio_seconds": 20,
+    "elapsed_seconds": 46.24,
+    "new_upload": true,
+    "word_checked": true,
+    "test_media_trashed": true,
+    "accuracy_measured": false
+  }
 }
