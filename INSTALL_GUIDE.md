@@ -47,7 +47,7 @@
 
 ## 故障恢复加固
 
-页面加载超时会自动重试，最多3次；复用已经提交的千问任务和保存的文稿链接，不重复上传。登录失效立即提示用户，不自动反复尝试登录。导出菜单等待可见及选项完整后才操作。加载异常保留媒体和页面诊断，文稿验证失败不清理源文件。自动恢复不能保证第三方改版、网络中断或服务限额永不影响任务。
+页面加载超时会自动重试，最多3次；复用已经提交的千问任务和保存的文稿链接，不重复上传。登录失效立即提示用户，不自动反复尝试登录。导出菜单等待可见及选项完整后才操作。加载异常保留媒体和页面诊断，文稿验证失败不清理源文件。千问提示云端存储已满时立即停止并保留本机音频；请用户自行清理千问记录后重试，工具不会删除云端记录。自动恢复不能保证第三方改版、网络中断或服务限额永不影响任务。
 
 ## HTTPS 证书
 
@@ -82,7 +82,7 @@
 
 ## 验证说明
 
-本次 32 项测试通过，其中云端识别返回结果在单元测试中模拟；旧本地推理断点测试已移除。此前本机20秒音频的千问后台完整流程约46秒，不能推断长视频速度或识别准确率。未在另一台全新 Mac 完成安装实测。
+本次 33 项测试通过，其中云端识别返回结果在单元测试中模拟；旧本地推理断点测试已移除。此前本机20秒音频的千问后台完整流程约46秒，不能推断长视频速度或识别准确率。未在另一台全新 Mac 完成安装实测。
 
 ## 主要文件
 
@@ -875,6 +875,10 @@ def confirm_submission(page,title,job,meta,save,timeout=120000):
             previous=events.read_text() if events.exists() else ''
             if not previous.endswith(body+'\n'):
                 events.write_text((previous+'\n'+str(time.time())+'\n'+body+'\n')[-64000:])
+            if '存储已满' in body and '删除不用的记录' in body:
+                meta.update(qianwen_submission_attempted=False,qianwen_submitted=False,qianwen_upload_confirmed=False)
+                save(job/'job.json',meta)
+                raise RuntimeError('千问账号云端存储已满，请在千问中自行删除不需要的记录后重试。本机音频已保留；工具不会删除云端记录。')
             meta['last_browser_check']=time.time();save(job/'job.json',meta)
     raise RuntimeError('千问页面未出现本次上传记录，尚未确认上传成功。已保留音频，请诊断后重试；不会重复自动上传。')
 
@@ -1763,6 +1767,20 @@ class UploadConfirmationTests(unittest.TestCase):
         self.assertEqual(meta['state'],'cloud_confirming_upload')
         page.locator.assert_called()
 
+    def test_cloud_storage_full_stops_without_claiming_upload(self):
+        from playwright.sync_api import TimeoutError
+        import qianwen_browser as browser
+        page=self.page()
+        page.get_by_text.return_value.filter.return_value.first.wait_for.side_effect=TimeoutError('absent')
+        page.locator.return_value.inner_text.return_value='任务添加成功，请在「我的记录」查看进展\n存储已满\n请删除不用的记录后重试'
+        meta={'qianwen_submission_attempted':True}
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(RuntimeError,'云端存储已满'):
+                browser.confirm_submission(page,'test-task',Path(tmp),meta,lambda *args:None)
+        self.assertFalse(meta['qianwen_upload_confirmed'])
+        self.assertFalse(meta['qianwen_submission_attempted'])
+        page.get_by_text.return_value.filter.return_value.first.wait_for.assert_called_once()
+
 if __name__=='__main__':unittest.main()
 
 ```
@@ -2080,7 +2098,7 @@ exit $result
 ```text
 {
   "test_reader.py": "44db5108039e4ddc37b71a1aa75a52a7d9259a8787aaa0d14fb8d3f52b517bdb",
-  "qianwen_browser.py": "a74a740d10aab38cb06d437790da78ea05967a12c43ac6f2d06177cc95e8fbf5",
+  "qianwen_browser.py": "3bb869a22ef027895843a88483dbff0b53d683dc62dc41f1fd5432537e7c731f",
   "测试千问后台流程.command": "365ea7c455b38238341c79e3f2db6531de8053c34a909c4a210a19248a680c8c",
   "smoke_qianwen.py": "5a41ae58b74a8f2edaaadeb36c60235646989c5bdb2aa49e17d72dfd8778f71e",
   "index.html": "c08bc216839f6f4e340af83ff3aa4e3969d033658155e192d3e1b5b05c3aa354",
@@ -2100,7 +2118,7 @@ exit $result
   "加载本次更新.command": "ceabb97ebf2b3d7df5568844de02733bc9e09f9c877621985bdaf801a182b978",
   "配置千问登录.command": "3bc9b14516ab4c169b0cd7a9c595778965167f7f7ce533eab5ad7b3abd835fac",
   "install.py": "837ca16dea4cc1b6c258f5effb2eea8953577857a00a4b9b927624aff8a146e8",
-  "test_qianwen.py": "0b24553adaa36ffe63477fbc4eaeeafbaa10d2f50b69cc5c2279b3a2bf469fbe",
+  "test_qianwen.py": "7b8c1ecf5a9060993d18d3f62c8d7cd171697cb3d8574a2a469b3f11f1a06740",
   "check_recovery.py": "7fb929eabc113b13551764fe57caa4f72e7f37f6cded04a75c590fe54e1a3d2d",
   "启用自动启动.command": "3475ec88b5c035f49adc0a13b3a14a09255ca19aa600a750051f6a8f1d8a07b6",
   "test_app.py": "602564153f61b95bf960f153ed5357076f1f07e1b2caac408d811e2b6b114e92"

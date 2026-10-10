@@ -102,4 +102,18 @@ class UploadConfirmationTests(unittest.TestCase):
         self.assertEqual(meta['state'],'cloud_confirming_upload')
         page.locator.assert_called()
 
+    def test_cloud_storage_full_stops_without_claiming_upload(self):
+        from playwright.sync_api import TimeoutError
+        import qianwen_browser as browser
+        page=self.page()
+        page.get_by_text.return_value.filter.return_value.first.wait_for.side_effect=TimeoutError('absent')
+        page.locator.return_value.inner_text.return_value='任务添加成功，请在「我的记录」查看进展\n存储已满\n请删除不用的记录后重试'
+        meta={'qianwen_submission_attempted':True}
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(RuntimeError,'云端存储已满'):
+                browser.confirm_submission(page,'test-task',Path(tmp),meta,lambda *args:None)
+        self.assertFalse(meta['qianwen_upload_confirmed'])
+        self.assertFalse(meta['qianwen_submission_attempted'])
+        page.get_by_text.return_value.filter.return_value.first.wait_for.assert_called_once()
+
 if __name__=='__main__':unittest.main()

@@ -128,6 +128,10 @@ def confirm_submission(page,title,job,meta,save,timeout=120000):
             previous=events.read_text() if events.exists() else ''
             if not previous.endswith(body+'\n'):
                 events.write_text((previous+'\n'+str(time.time())+'\n'+body+'\n')[-64000:])
+            if '存储已满' in body and '删除不用的记录' in body:
+                meta.update(qianwen_submission_attempted=False,qianwen_submitted=False,qianwen_upload_confirmed=False)
+                save(job/'job.json',meta)
+                raise RuntimeError('千问账号云端存储已满，请在千问中自行删除不需要的记录后重试。本机音频已保留；工具不会删除云端记录。')
             meta['last_browser_check']=time.time();save(job/'job.json',meta)
     raise RuntimeError('千问页面未出现本次上传记录，尚未确认上传成功。已保留音频，请诊断后重试；不会重复自动上传。')
 
