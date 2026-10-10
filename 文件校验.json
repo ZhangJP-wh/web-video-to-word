@@ -1,7 +1,7 @@
 {
   ".gitignore": "3e1cfc92af2c00c9dede00b674647a334c4cd068d8d8d743780802025013e291",
   "app.py": "b8f8270e30609d013cddead036c86b649f58250a870caa964dd6f0a2c75eabec",
-  "bilibili_download.py": "610f783140c50a447a8fbfc68960cf37fbaead94fe9a8ffb2e205f40f1a37173",
+  "bilibili_download.py": "286ed2197bb0763f3f060aea40075d0cb4a46c1252ef19a0343358e00dd40f5d",
   "browser_service.py": "4bb4e16ac5b1f0ba53a46e3df01a55b5072f4d1dcbd3c48e745aaf55d8e5136a",
   "check_recovery.py": "7fb929eabc113b13551764fe57caa4f72e7f37f6cded04a75c590fe54e1a3d2d",
   "cloud_migration.py": "cc5c02b953f404a280f0230e836ff9a5fe04f3e7002361ef9b8b8cdc244c07a0",
@@ -22,7 +22,7 @@
   "start-windows.cmd": "c7337ce90691fcda24e0bf19b584ff342288322681552433921f92ef399ed9b8",
   "task_controls.py": "e452af89723c6a0506012cb48a931bb7286132925ed33d56db0069ef6e29fba4",
   "test_app.py": "c7ffaebeb5c1ea329f86b5e1047860f080b1a7b46604250782d0cad6fc96d233",
-  "test_bilibili_download.py": "4f7d34d63bc60af4113c1f9f4ca824cf758f332ac3929f49def966d0b02c3546",
+  "test_bilibili_download.py": "7d880288610b8e78afb0927f074275b737b143b5b81750c4caf51d99ebe7dae1",
   "test_browser_service.py": "fa30cf65671ef804c0fee82b0cecced1a3748bbc9f2209cde584ceb8aa49a2c3",
   "test_deletion_queue.py": "172f0a40974d00804f6d7e0d0fbcdf72acc7178c1d301c7cfec678d88985db71",
   "test_install.py": "5ecdd4f27fc1761c89a27fd5d623377f05315a318cbb622bbd615686798b4941",
