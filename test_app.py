@@ -89,5 +89,24 @@ class PageTests(unittest.TestCase):
                 self.assertTrue(restored.empty())
 
 
+class WorkerFailureTests(unittest.TestCase):
+    def test_launch_failure_is_visible_and_next_job_runs(self):
+        from unittest.mock import MagicMock
+        with tempfile.TemporaryDirectory() as tmp:
+            work=Path(tmp)
+            identifiers=['000000000001','000000000002']
+            for ident in identifiers:
+                folder=work/'jobs'/ident;folder.mkdir(parents=True)
+                (folder/'job.json').write_text(json.dumps({'url':'https://example.com/'+ident,'state':'queued','engine':'qianwen'}))
+            fakequeue=MagicMock()
+            fakequeue.get.side_effect=[(ident,'https://example.com/'+ident,ident) for ident in identifiers]+[StopIteration()]
+            process=MagicMock();process.wait.return_value=0
+            with patch.object(app,'WORK',work),patch.object(app,'tasks',fakequeue),patch.object(app,'pending',set(identifiers)),patch.object(app,'generations',{}),patch.object(app,'cancelled',set()),patch.object(app,'active_readers',{}),patch('app.subprocess.Popen',side_effect=[OSError('launch failed'),process]) as run:
+                with self.assertRaises(StopIteration):app.worker()
+            first=json.loads((work/'jobs'/identifiers[0]/'job.json').read_text())
+            self.assertEqual(first['state'],'failed');self.assertIn('launch failed',first['error'])
+            self.assertEqual(run.call_count,2)
+            self.assertEqual(fakequeue.task_done.call_count,2)
+
 if __name__ == '__main__':
     unittest.main()

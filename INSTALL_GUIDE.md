@@ -35,6 +35,8 @@
 
 更新时停止服务，备份 work 中的任务记录与浏览器登录资料，替换源码和重新安装 requirements 后启动；不要用别人的登录资料覆盖自己的。朋友电脑不会因 GitHub 更新自动升级。
 
+后台启动识别进程失败会显示具体失败原因，不会一直停在排队状态；个别任务记录异常不会停止后续队列。
+
 ## 故障恢复加固
 
 页面加载超时会自动重试，最多3次；复用已经提交的千问任务和保存的文稿链接，不重复上传。登录失效立即提示用户，不自动反复尝试登录。导出菜单等待可见及选项完整后才操作。加载异常保留媒体和页面诊断，文稿验证失败不清理源文件。自动恢复不能保证第三方改版、网络中断或服务限额永不影响任务。
@@ -72,7 +74,7 @@
 
 ## 验证说明
 
-本次 29 项测试通过，其中云端识别返回结果在单元测试中模拟；旧本地推理断点测试已移除。此前本机20秒音频的千问后台完整流程约46秒，不能推断长视频速度或识别准确率。未在另一台全新 Mac 完成安装实测。
+本次 30 项测试通过，其中云端识别返回结果在单元测试中模拟；旧本地推理断点测试已移除。此前本机20秒音频的千问后台完整流程约46秒，不能推断长视频速度或识别准确率。未在另一台全新 Mac 完成安装实测。
 
 ## 主要文件
 
@@ -217,6 +219,7 @@ def list_jobs():
 def worker():
     while True:
         ident, url, generation = tasks.get()
+        log=None
         try:
             folder = WORK / 'jobs' / ident
             import fcntl
@@ -238,9 +241,16 @@ def worker():
                 active_readers[ident]=(process,generation)
             result=process.wait();log.close()
             if result==0:(folder/'run.log').unlink(missing_ok=True)
-        except OSError:
-            pass
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            record=WORK/'jobs'/ident/'job.json'
+            if record.exists() and (ident,generation) not in cancelled:
+                try:
+                    meta=json.loads(record.read_text())
+                    meta.update(state='failed',error='后台任务未能启动或任务记录异常：'+str(error))
+                    save_json(record,meta)
+                except (OSError,ValueError):pass
         finally:
+            if log is not None:log.close()
             with mutex:
                 if generations.get(ident)==generation:
                     pending.discard(ident);generations.pop(ident,None)
@@ -372,7 +382,9 @@ class Handler(BaseHTTPRequestHandler):
             if not 0 < length <= 5_000_000:
                 raise ValueError('提交内容为空或过大')
             data = json.loads(self.rfile.read(length))
+            if not isinstance(data,dict):raise ValueError('提交内容必须是对象')
             if self.path == '/jobs':
+                if not isinstance(data.get('url'),str):raise ValueError('请提交有效的网页链接')
                 return self.reply(200, {'id': enqueue(data['url'].strip(), 'qianwen')})
             if self.path == '/qianwen/login':
                 return self.reply(200, open_login())
@@ -1574,6 +1586,25 @@ class PageTests(unittest.TestCase):
                 self.assertTrue(restored.empty())
 
 
+class WorkerFailureTests(unittest.TestCase):
+    def test_launch_failure_is_visible_and_next_job_runs(self):
+        from unittest.mock import MagicMock
+        with tempfile.TemporaryDirectory() as tmp:
+            work=Path(tmp)
+            identifiers=['000000000001','000000000002']
+            for ident in identifiers:
+                folder=work/'jobs'/ident;folder.mkdir(parents=True)
+                (folder/'job.json').write_text(json.dumps({'url':'https://example.com/'+ident,'state':'queued','engine':'qianwen'}))
+            fakequeue=MagicMock()
+            fakequeue.get.side_effect=[(ident,'https://example.com/'+ident,ident) for ident in identifiers]+[StopIteration()]
+            process=MagicMock();process.wait.return_value=0
+            with patch.object(app,'WORK',work),patch.object(app,'tasks',fakequeue),patch.object(app,'pending',set(identifiers)),patch.object(app,'generations',{}),patch.object(app,'cancelled',set()),patch.object(app,'active_readers',{}),patch('app.subprocess.Popen',side_effect=[OSError('launch failed'),process]) as run:
+                with self.assertRaises(StopIteration):app.worker()
+            first=json.loads((work/'jobs'/identifiers[0]/'job.json').read_text())
+            self.assertEqual(first['state'],'failed');self.assertIn('launch failed',first['error'])
+            self.assertEqual(run.call_count,2)
+            self.assertEqual(fakequeue.task_done.call_count,2)
+
 if __name__ == '__main__':
     unittest.main()
 
@@ -1987,14 +2018,14 @@ exit $result
   "smoke_qianwen_runner.py": "10c6047ad2b7ae20cac3945b41f8afdc047975fd2da3ef0dc576f3753a512409",
   "cloud_migration.py": "cc5c02b953f404a280f0230e836ff9a5fe04f3e7002361ef9b8b8cdc244c07a0",
   "自动恢复测试.command": "e5f7e855d99cd648d6ae2e1382da651e8afb7597f184e08d1661d6daef5cc7f6",
-  "app.py": "8a8779e13abfa8da12c953c2cf44de52729bd6963b31dbc6ce4c1b87b3fb618e",
+  "app.py": "5d159f770f7f14dbc0b4356f88da7ff5238d79f631ade25cb1c15985efc4736c",
   "加载本次更新.command": "ceabb97ebf2b3d7df5568844de02733bc9e09f9c877621985bdaf801a182b978",
   "配置千问登录.command": "3bc9b14516ab4c169b0cd7a9c595778965167f7f7ce533eab5ad7b3abd835fac",
   "install.py": "837ca16dea4cc1b6c258f5effb2eea8953577857a00a4b9b927624aff8a146e8",
   "test_qianwen.py": "8c7b820b2a463d3eb009a2a0affa96927a3acca9889ab84c420657a630031ac1",
   "check_recovery.py": "7fb929eabc113b13551764fe57caa4f72e7f37f6cded04a75c590fe54e1a3d2d",
   "启用自动启动.command": "3475ec88b5c035f49adc0a13b3a14a09255ca19aa600a750051f6a8f1d8a07b6",
-  "test_app.py": "911650ca1bd12c3e87ce499ed1d6bfea8882d8d04ac9e357bb98c067853befc9"
+  "test_app.py": "602564153f61b95bf960f153ed5357076f1f07e1b2caac408d811e2b6b114e92"
 }
 
 ```

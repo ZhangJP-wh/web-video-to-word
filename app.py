@@ -129,6 +129,7 @@ def list_jobs():
 def worker():
     while True:
         ident, url, generation = tasks.get()
+        log=None
         try:
             folder = WORK / 'jobs' / ident
             import fcntl
@@ -150,9 +151,16 @@ def worker():
                 active_readers[ident]=(process,generation)
             result=process.wait();log.close()
             if result==0:(folder/'run.log').unlink(missing_ok=True)
-        except OSError:
-            pass
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            record=WORK/'jobs'/ident/'job.json'
+            if record.exists() and (ident,generation) not in cancelled:
+                try:
+                    meta=json.loads(record.read_text())
+                    meta.update(state='failed',error='后台任务未能启动或任务记录异常：'+str(error))
+                    save_json(record,meta)
+                except (OSError,ValueError):pass
         finally:
+            if log is not None:log.close()
             with mutex:
                 if generations.get(ident)==generation:
                     pending.discard(ident);generations.pop(ident,None)
@@ -284,7 +292,9 @@ class Handler(BaseHTTPRequestHandler):
             if not 0 < length <= 5_000_000:
                 raise ValueError('提交内容为空或过大')
             data = json.loads(self.rfile.read(length))
+            if not isinstance(data,dict):raise ValueError('提交内容必须是对象')
             if self.path == '/jobs':
+                if not isinstance(data.get('url'),str):raise ValueError('请提交有效的网页链接')
                 return self.reply(200, {'id': enqueue(data['url'].strip(), 'qianwen')})
             if self.path == '/qianwen/login':
                 return self.reply(200, open_login())
