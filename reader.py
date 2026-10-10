@@ -150,6 +150,7 @@ def prepare(args):
             wav = Path(meta.get('audio', str(Path(meta['media']).parent / 'transcription-audio.wav')))
             meta['audio'] = str(wav)
             if not wav.exists():
+                meta['state']='extracting_audio';save_json(job/'job.json',meta)
                 partial = wav.with_name('transcription-audio.partial.wav')
                 extract_audio(ff,Path(meta['media']),partial)
                 partial.replace(wav)
@@ -170,6 +171,7 @@ def prepare(args):
                 from qianwen_browser import export_with_retry
                 raw = export_with_retry(wav, job, meta, save_json)
                 save_json(raw_path, raw)
+            meta['state']='generating_document';save_json(job/'job.json',meta)
             build_document(job, raw)
             print(f'Word 已生成：{job}', flush=True)
         except Exception as error:
@@ -318,7 +320,7 @@ def build_document(job, raw=None):
     configure_folder_sort(folder)
     report['document_sha256'] = hashlib.sha256(path.read_bytes()).hexdigest()
     save_json(job / 'validation.json', report)
-    meta.update(state='completed', document=str(path), blocks=len(blocks),
+    meta.update(state='cleaning', document=str(path), blocks=len(blocks),
                 language=raw.get('language'), model=raw.get('model', meta.get('model')),
                 document_type='raw_asr')
     for key in ('review_flags', 'import_error', 'error', 'cleanup_error'):
@@ -329,6 +331,8 @@ def build_document(job, raw=None):
     except (OSError, ValueError) as error:
         meta['cleanup_error'] = str(error)
         save_json(job / 'job.json', meta)
+    meta['state']='completed'
+    save_json(job/'job.json',meta)
     return path
 
 

@@ -37,6 +37,10 @@
 
 后台启动识别进程失败会显示具体失败原因，不会一直停在排队状态；个别任务记录异常不会停止后续队列。
 
+## 运行状态
+
+状态对应实际步骤：下载、提取音频、准备上传音频、连接千问、上传、等待千问结果、导出原文、生成并检查 Word、清理媒体、完成。没有千问内部进度数据时，只显示等待结果，不断言云端正在识别。Word 生成后清理结束或记录清理错误，才显示完成。
+
 ## 故障恢复加固
 
 页面加载超时会自动重试，最多3次；复用已经提交的千问任务和保存的文稿链接，不重复上传。登录失效立即提示用户，不自动反复尝试登录。导出菜单等待可见及选项完整后才操作。加载异常保留媒体和页面诊断，文稿验证失败不清理源文件。自动恢复不能保证第三方改版、网络中断或服务限额永不影响任务。
@@ -553,7 +557,7 @@ body{font:16px/1.7 -apple-system,BlinkMacSystemFont,sans-serif;color:#24322d;bac
 <div id="jobs"></div>
 <script>
 const historicalTaskTimes={};
-const stages={queued:'排队中',downloading:'正在下载',downloaded:'下载完成',diarizing:'正在准备千问识别',transcribing:'正在准备千问识别',cloud_preparing:'正在准备音频并连接千问',cloud_transcribing:'千问正在后台识别语音',cloud_exporting:'正在导出千问原文 Word',completed:'Word 已生成，可以查看',login_required:'需要重新登录千问',failed:'处理失败，进度已保留'};
+const stages={queued:'排队中',downloading:'正在下载',downloaded:'下载完成',diarizing:'正在准备千问识别',transcribing:'正在准备千问识别',cloud_preparing:'正在准备上传音频',cloud_transcribing:'等待千问处理结果或加载文稿页面',extracting_audio:'正在提取音频',cloud_connecting:'正在连接千问并检查登录',cloud_uploading:'正在向千问上传音频',retry_waiting:'页面加载超时，稍后自动重试',generating_document:'正在生成并检查 Word 文稿',cleaning:'Word 已生成，正在清理原音视频和临时文件',cloud_exporting:'正在导出千问原文 Word',completed:'Word 已生成，可以查看',login_required:'需要重新登录千问',failed:'处理失败，进度已保留'};
 const msg=document.querySelector('#message');
 async function requireControls(){let h=await(await fetch('/health')).json();if(!h.task_controls)throw Error('请双击“加载本次更新.command”，让网页服务加载登录和删除功能。')}
 document.querySelector('#qianwen-login').onclick=async()=>{try{await requireControls();let r=await post('/qianwen/login',{});msg.textContent=r.message}catch(e){msg.textContent=e.message}};
@@ -562,7 +566,7 @@ async function post(url,data){let r=await fetch(url,{method:'POST',headers:{'Con
 document.querySelector('#form').onsubmit=async e=>{e.preventDefault();try{if('qianwen'==='qianwen'){let health=await(await fetch('/health')).json();if(!health.engines?.includes('qianwen'))throw Error('网页服务需要加载新版。请完成千问登录配置后再试。')}await post('/jobs',{url:document.querySelector('#url').value,engine:'qianwen'});document.querySelector('#url').value='';msg.textContent='已加入后台队列。你可以继续做其他事情，稍后回来查看文稿。';await refresh()}catch(e){msg.textContent=e.message}};
 function taskHeading(j){let title=j.title;if(j.state==='queued')return '待处理 · '+(title||'正在获取标题（'+new URL(j.url).hostname+' / '+(new URL(j.url).searchParams.get('v')||new URL(j.url).pathname.split('/').filter(Boolean).pop()||j.id)+'）');return title||'正在获取标题 · '+j.id}
 function link(text,url,style){let a=document.createElement('a');a.textContent=text;a.href=url;if(style)a.className=style;return a}
-async function refresh(){try{let jobs=await(await fetch('/jobs')).json();jobs.sort((a,b)=>(b.created_at??historicalTaskTimes[b.id]??b.added_at??Infinity)-(a.created_at??historicalTaskTimes[a.id]??a.added_at??Infinity));let host=document.querySelector('#jobs');host.replaceChildren();for(let j of jobs){let card=document.createElement('article');let h=document.createElement('h2');h.textContent=taskHeading(j);card.append(h);let p=document.createElement('p');p.textContent=(j.document&&!j.has_document)?'Word 文件已不在原保存位置，重新提交链接可生成':(stages[j.state]||'准备生成文稿');card.append(p);card.append(link('原网页',j.url));if(j.error){let err=document.createElement('p');err.textContent=j.error;card.append(err)}if(j.cleanup_error){let note=document.createElement('p');note.textContent='Word 已生成，但部分临时文件未清理：'+j.cleanup_error;card.append(note)}if(j.has_document){let actions=document.createElement('p');actions.className='actions';actions.append(link('查看 Word 文稿','/preview/'+j.id,'action'));let reveal=document.createElement('button');reveal.type='button';reveal.className='secondary';reveal.textContent='打开文档所在位置';let revealStatus=document.createElement('small');revealStatus.setAttribute('role','status');reveal.onclick=async()=>{reveal.disabled=true;revealStatus.textContent='正在打开文件夹…';try{await post('/reveal/'+j.id,{});revealStatus.textContent='已打开 Finder 文件夹。';msg.textContent='已打开文档所在的 Finder 文件夹。'}catch(e){revealStatus.textContent='打开失败：'+e.message;msg.textContent='打开失败：'+e.message}finally{reveal.disabled=false}};actions.append(reveal);actions.append(revealStatus);card.append(actions);let note=document.createElement('small');note.textContent=j.temporary_files_removed?(j.media_trashed?'原音视频已移入废纸篓，临时音轨已清理。':'原音视频与临时音轨已清理。'):'Word 内容未经人工校对。';card.append(note)}let controls=document.createElement('p');controls.className='actions';if(j.state==='failed'||j.state==='login_required'){let retry=document.createElement('button');retry.textContent='重试任务';retry.onclick=async()=>{try{await post('/jobs',{url:j.url,engine:'qianwen'});await refresh()}catch(e){msg.textContent=e.message}};controls.append(retry)}let remove=document.createElement('button');remove.type='button';remove.className='secondary';remove.style.color='#a52222';remove.textContent='删除任务';remove.onclick=async()=>{if(!confirm('删除“'+(j.title||j.id)+'”？将停止该任务，把本机任务文件和相关文稿移入废纸篓。千问云端记录需在千问网页中管理。'))return;remove.disabled=true;try{await requireControls();let r=await post('/delete/'+j.id,{});msg.textContent=r.message;await refresh()}catch(e){msg.textContent='删除失败：'+e.message;remove.disabled=false}};if(j.has_document){card.querySelector('.actions').append(remove)}else{controls.append(remove)}if(controls.children.length)card.append(controls);host.append(card)}await refreshLogin()}catch(e){msg.textContent='后台连接中断，请重新启动工具。'}}
+async function refresh(){try{let jobs=await(await fetch('/jobs')).json();jobs.sort((a,b)=>(b.created_at??historicalTaskTimes[b.id]??b.added_at??Infinity)-(a.created_at??historicalTaskTimes[a.id]??a.added_at??Infinity));let host=document.querySelector('#jobs');host.replaceChildren();for(let j of jobs){let card=document.createElement('article');let h=document.createElement('h2');h.textContent=taskHeading(j);card.append(h);let p=document.createElement('p');p.textContent=(j.document&&!j.has_document)?'Word 文件已不在原保存位置，重新提交链接可生成':(stages[j.state]||'状态暂未识别：'+String(j.state));card.append(p);card.append(link('原网页',j.url));if(j.error){let err=document.createElement('p');err.textContent=j.error;card.append(err)}if(j.cleanup_error){let note=document.createElement('p');note.textContent='Word 已生成，但部分临时文件未清理：'+j.cleanup_error;card.append(note)}if(j.has_document){let actions=document.createElement('p');actions.className='actions';actions.append(link('查看 Word 文稿','/preview/'+j.id,'action'));let reveal=document.createElement('button');reveal.type='button';reveal.className='secondary';reveal.textContent='打开文档所在位置';let revealStatus=document.createElement('small');revealStatus.setAttribute('role','status');reveal.onclick=async()=>{reveal.disabled=true;revealStatus.textContent='正在打开文件夹…';try{await post('/reveal/'+j.id,{});revealStatus.textContent='已打开 Finder 文件夹。';msg.textContent='已打开文档所在的 Finder 文件夹。'}catch(e){revealStatus.textContent='打开失败：'+e.message;msg.textContent='打开失败：'+e.message}finally{reveal.disabled=false}};actions.append(reveal);actions.append(revealStatus);card.append(actions);let note=document.createElement('small');note.textContent=j.temporary_files_removed?(j.media_trashed?'原音视频已移入废纸篓，临时音轨已清理。':'原音视频与临时音轨已清理。'):'Word 内容未经人工校对。';card.append(note)}let controls=document.createElement('p');controls.className='actions';if(j.state==='failed'||j.state==='login_required'){let retry=document.createElement('button');retry.textContent='重试任务';retry.onclick=async()=>{try{await post('/jobs',{url:j.url,engine:'qianwen'});await refresh()}catch(e){msg.textContent=e.message}};controls.append(retry)}let remove=document.createElement('button');remove.type='button';remove.className='secondary';remove.style.color='#a52222';remove.textContent='删除任务';remove.onclick=async()=>{if(!confirm('删除“'+(j.title||j.id)+'”？将停止该任务，把本机任务文件和相关文稿移入废纸篓。千问云端记录需在千问网页中管理。'))return;remove.disabled=true;try{await requireControls();let r=await post('/delete/'+j.id,{});msg.textContent=r.message;await refresh()}catch(e){msg.textContent='删除失败：'+e.message;remove.disabled=false}};if(j.has_document){card.querySelector('.actions').append(remove)}else{controls.append(remove)}if(controls.children.length)card.append(controls);host.append(card)}await refreshLogin()}catch(e){msg.textContent='后台连接中断，请重新启动工具。'}}
 refresh();setInterval(refresh,6000);
 </script></html>
 
@@ -829,7 +833,7 @@ def export_with_retry(audio, job, meta, save):
             return export_audio(audio,job,meta,save)
         except BrowserTimeout:
             if attempt==2:raise
-            meta.update(state='cloud_transcribing',retry_attempt=attempt+1)
+            meta.update(state='retry_waiting',retry_attempt=attempt+1)
             save(job/'job.json',meta)
             time.sleep(5*(attempt+1))
 
@@ -852,6 +856,7 @@ def export_panel(page,job):
 def export_audio(audio, job, meta, save):
     from playwright.sync_api import sync_playwright
     from reader import ffmpeg, filename
+    meta['state']='cloud_preparing';save(job/'job.json',meta)
     upload = job/'media'/(filename(meta['title'])+'-'+job.name+'.mp3')
     if not upload.exists():
         subprocess.run([ffmpeg(), '-nostdin', '-v', 'error', '-y', '-i', str(audio),
@@ -861,6 +866,7 @@ def export_audio(audio, job, meta, save):
     with sync_playwright() as p:
         with browser_context(p) as context:
             page = context.pages[0] if context.pages else context.new_page()
+            meta['state']='cloud_connecting';save(job/'job.json',meta)
             page.goto(meta.get('qianwen_url') or URL)
             page.screenshot(path=str(job/'browser-diagnostic.png'), full_page=True)
             (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
@@ -875,6 +881,7 @@ def export_audio(audio, job, meta, save):
                 if not page.get_by_text('不翻译', exact=True).is_visible():
                     raise RuntimeError('未确认不翻译设置，停止上传')
                 if not meta.get('qianwen_submitted'):
+                    meta['state']='cloud_uploading';save(job/'job.json',meta)
                     with page.expect_file_chooser() as chooser:
                         page.get_by_role('button', name=re.compile('点击或将')).click()
                     chooser.value.set_files(str(upload))
@@ -900,6 +907,7 @@ def export_audio(audio, job, meta, save):
                     break
                 else:
                     raise RuntimeError('千问处理超过等待上限，保留媒体以便检查')
+            meta['state']='cloud_exporting';save(job/'job.json',meta)
             page.get_by_role('button', name='导出', exact=True).wait_for(timeout=60000)
             page.screenshot(path=str(job/'browser-diagnostic.png'), full_page=True)
             (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
@@ -1099,6 +1107,7 @@ def prepare(args):
             wav = Path(meta.get('audio', str(Path(meta['media']).parent / 'transcription-audio.wav')))
             meta['audio'] = str(wav)
             if not wav.exists():
+                meta['state']='extracting_audio';save_json(job/'job.json',meta)
                 partial = wav.with_name('transcription-audio.partial.wav')
                 extract_audio(ff,Path(meta['media']),partial)
                 partial.replace(wav)
@@ -1119,6 +1128,7 @@ def prepare(args):
                 from qianwen_browser import export_with_retry
                 raw = export_with_retry(wav, job, meta, save_json)
                 save_json(raw_path, raw)
+            meta['state']='generating_document';save_json(job/'job.json',meta)
             build_document(job, raw)
             print(f'Word 已生成：{job}', flush=True)
         except Exception as error:
@@ -1267,7 +1277,7 @@ def build_document(job, raw=None):
     configure_folder_sort(folder)
     report['document_sha256'] = hashlib.sha256(path.read_bytes()).hexdigest()
     save_json(job / 'validation.json', report)
-    meta.update(state='completed', document=str(path), blocks=len(blocks),
+    meta.update(state='cleaning', document=str(path), blocks=len(blocks),
                 language=raw.get('language'), model=raw.get('model', meta.get('model')),
                 document_type='raw_asr')
     for key in ('review_flags', 'import_error', 'error', 'cleanup_error'):
@@ -1278,6 +1288,8 @@ def build_document(job, raw=None):
     except (OSError, ValueError) as error:
         meta['cleanup_error'] = str(error)
         save_json(job / 'job.json', meta)
+    meta['state']='completed'
+    save_json(job/'job.json',meta)
     return path
 
 
@@ -2002,10 +2014,10 @@ exit $result
 ```text
 {
   "test_reader.py": "44db5108039e4ddc37b71a1aa75a52a7d9259a8787aaa0d14fb8d3f52b517bdb",
-  "qianwen_browser.py": "f19cd54031b7d7c3f4dfe4fa13b7b03a11dbe49b859d79f52a3c9570c26f3cc3",
+  "qianwen_browser.py": "3f2f4655e7ddd3dfdc4a19b85d4b0b25959803baee841cd43523e55fc5c367b4",
   "测试千问后台流程.command": "365ea7c455b38238341c79e3f2db6531de8053c34a909c4a210a19248a680c8c",
   "smoke_qianwen.py": "5a41ae58b74a8f2edaaadeb36c60235646989c5bdb2aa49e17d72dfd8778f71e",
-  "index.html": "bc0041386bbc0a09ca620c3f6eec8711e1eaf5646b89291d6d7eded8932b417b",
+  "index.html": "e9834483039d7f85b4495a593575a80b263dc9a2998d29a9b33165fe28cd98e5",
   "停用自动启动.command": "0c2353cd41fd56b737864d09d6fe83f8b7d62cc1c51757e86fe0bc6bbd76b682",
   "launch_service.py": "2cadb70ee153b678af24a6eb9e911d7e6e2ae4906ca8d3115ff8bb723d516dba",
   "requirements.txt": "8f1f858b32310780d785ef1d196205c8c85a0c44efbb9fe4124bf7e98c9a96d3",
@@ -2013,7 +2025,7 @@ exit $result
   "首次安装.command": "3386934c6c62f0983f9d9ee8541bf0d73a4fa671be319201efa649bf71c28d32",
   "task_controls.py": "a420be2ff8a6b4fc833d126f235e8a249c521e2a8c30435b36ebdf7426579084",
   "test_task_controls.py": "2a0d1da5b7de5a52a5d3c0257dd989341bccf00ba3cda5fd57fe98db25842644",
-  "reader.py": "471e54c25778c6f00eed89124298e7808502366a8561e115710bd297a26357a0",
+  "reader.py": "8e245f7ee3a2bc35c89c8f91f7bc08c554e2901e56d179ff84b893cc54864f63",
   "切换千问并清理本地模型.command": "39ae5c718d5854f9fec85e13cd2c6fc683cb3c07844dffdd29697f97cfeeaaf4",
   "smoke_qianwen_runner.py": "10c6047ad2b7ae20cac3945b41f8afdc047975fd2da3ef0dc576f3753a512409",
   "cloud_migration.py": "cc5c02b953f404a280f0230e836ff9a5fe04f3e7002361ef9b8b8cdc244c07a0",

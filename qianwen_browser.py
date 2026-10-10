@@ -90,7 +90,7 @@ def export_with_retry(audio, job, meta, save):
             return export_audio(audio,job,meta,save)
         except BrowserTimeout:
             if attempt==2:raise
-            meta.update(state='cloud_transcribing',retry_attempt=attempt+1)
+            meta.update(state='retry_waiting',retry_attempt=attempt+1)
             save(job/'job.json',meta)
             time.sleep(5*(attempt+1))
 
@@ -113,6 +113,7 @@ def export_panel(page,job):
 def export_audio(audio, job, meta, save):
     from playwright.sync_api import sync_playwright
     from reader import ffmpeg, filename
+    meta['state']='cloud_preparing';save(job/'job.json',meta)
     upload = job/'media'/(filename(meta['title'])+'-'+job.name+'.mp3')
     if not upload.exists():
         subprocess.run([ffmpeg(), '-nostdin', '-v', 'error', '-y', '-i', str(audio),
@@ -122,6 +123,7 @@ def export_audio(audio, job, meta, save):
     with sync_playwright() as p:
         with browser_context(p) as context:
             page = context.pages[0] if context.pages else context.new_page()
+            meta['state']='cloud_connecting';save(job/'job.json',meta)
             page.goto(meta.get('qianwen_url') or URL)
             page.screenshot(path=str(job/'browser-diagnostic.png'), full_page=True)
             (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
@@ -136,6 +138,7 @@ def export_audio(audio, job, meta, save):
                 if not page.get_by_text('不翻译', exact=True).is_visible():
                     raise RuntimeError('未确认不翻译设置，停止上传')
                 if not meta.get('qianwen_submitted'):
+                    meta['state']='cloud_uploading';save(job/'job.json',meta)
                     with page.expect_file_chooser() as chooser:
                         page.get_by_role('button', name=re.compile('点击或将')).click()
                     chooser.value.set_files(str(upload))
@@ -161,6 +164,7 @@ def export_audio(audio, job, meta, save):
                     break
                 else:
                     raise RuntimeError('千问处理超过等待上限，保留媒体以便检查')
+            meta['state']='cloud_exporting';save(job/'job.json',meta)
             page.get_by_role('button', name='导出', exact=True).wait_for(timeout=60000)
             page.screenshot(path=str(job/'browser-diagnostic.png'), full_page=True)
             (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
