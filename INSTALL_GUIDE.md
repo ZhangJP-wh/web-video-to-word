@@ -168,6 +168,8 @@ curl --fail --location 'https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen3-AS
 
 ### 千问网页识别（实验性可选功能）
 
+首次登录完成后，可双击“测试千问后台流程.command”。它从已有任务的音轨截取20秒，在无窗口浏览器中转写、导出并生成测试Word，结果保存到 work/qianwen-smoke-test.json。没有现成音轨时需要先下载一个测试视频。此操作不终止正在识别的任务，不删除完整原媒体。当前版本登录失效不会自动弹出窗口；失败后在页面查看错误，再双击“配置千问登录.command”重新登录并重试原链接。
+
 页面的识别方式可以选择“千问网页”。首次双击项目中的“配置千问登录.command”，安装官方 Playwright/Chromium 后，在工具专用浏览器中登录千问，回到终端按回车。登录资料保存在本机 work/qianwen-browser-profile，不上传 GitHub。后续任务使用无窗口浏览器，音频会上传千问服务器。
 
 设置固定为中英文自由说、不翻译、多人讨论；只导出原文 Word，必须包含发言人和时间戳。导出后生成本项目格式的 Word，并执行原有文档检查和废纸篓清理。千问网页单文件上限为6小时，音频500MB；工具使用64kbps MP3上传。网站额度、验证码、登录失效、页面变化可能中断，此时保留原媒体并显示失败，不绕过验证码、不自动购买额度。
@@ -1389,12 +1391,14 @@ print '确认页面能打开后，这个终端窗口可以关闭。'
   "qianwen_browser.py": "daa1fea0b087bd1c48a2e4465ba2c1a5905489781f3de3ee6ca792782250d12e",
   "reader.py": "249c75d6bddae4a34db213168606a669dac8308707a7bf7dc20df992fad73ed8",
   "requirements.txt": "aa237150a51d1f468ccab935e7ccd3235beddaf60afb9719676dc7f8fbf63e7c",
+  "smoke_qianwen.py": "df0219bddc0456a3634a1e76c40a359060787ced5355e6a5d6d9f4495a37c81c",
   "test_app.py": "911650ca1bd12c3e87ce499ed1d6bfea8882d8d04ac9e357bb98c067853befc9",
   "test_qianwen.py": "d95d8b70b0948906667d2de5389c00fbef90476554551beee1308e988d5dacc9",
   "test_reader.py": "ea7af8f55bfe4c47023ee9f712b6b078cfc9dd0beedec2325134556970fdc059",
   "停用自动启动.command": "0c2353cd41fd56b737864d09d6fe83f8b7d62cc1c51757e86fe0bc6bbd76b682",
   "启动工具.command": "f67940511e7be84f96ef4eadc60dee14b08668d185f06f94cd03a02ebd3d59ca",
   "启用自动启动.command": "3475ec88b5c035f49adc0a13b3a14a09255ca19aa600a750051f6a8f1d8a07b6",
+  "测试千问后台流程.command": "52d888b7df03ab9b1b22d779628e6526f0e13f68ec09ba3bd1344faa7f61a6c3",
   "自动恢复测试.command": "e5f7e855d99cd648d6ae2e1382da651e8afb7597f184e08d1661d6daef5cc7f6",
   "配置千问登录.command": "3bc9b14516ab4c169b0cd7a9c595778965167f7f7ce533eab5ad7b3abd835fac",
   "首次安装.command": "3386934c6c62f0983f9d9ee8541bf0d73a4fa671be319201efa649bf71c28d32"
@@ -1827,5 +1831,82 @@ export PLAYWRIGHT_BROWSERS_PATH="$PWD/work/browser-bin"
 /bin/launchctl kill SIGTERM "gui/$(id -u)/com.zhangjp.web-video-to-word" 2>/dev/null || true
 echo "登录配置完成。如已启用自动启动，服务将自动加载新版。"
 read '?按回车关闭窗口。'
+
+```
+
+### FILE: smoke_qianwen.py
+```python
+"""Run the independent cloud workflow from the normal Mac environment."""
+import hashlib
+import json
+import subprocess
+import time
+from pathlib import Path
+import reader
+from qianwen_browser import export_audio
+
+
+def main():
+    result={'passed':False,'started_at':time.time()}
+    ident=hashlib.sha256(b'qianwen-smoke-test-20-seconds').hexdigest()[:12]
+    job=reader.WORK/'jobs'/ident
+    (job/'media').mkdir(parents=True,exist_ok=True)
+    meta={'url':'',
+          'title':'千问独立后台测试（仅20秒片段）','name':'千问独立后台测试（仅20秒片段）',
+          'audio_duration':20,'engine':'qianwen','state':'cloud_transcribing',
+          'created_at':time.time()}
+    existing=job/'job.json'
+    if existing.exists():
+        previous=json.loads(existing.read_text())
+        for key in ('qianwen_submitted','qianwen_url'): 
+            if key in previous:meta[key]=previous[key]
+    try:
+        candidates=[]
+        for other in (reader.WORK/'jobs').glob('*/job.json'):
+            data=json.loads(other.read_text())
+            audio=Path(data.get('audio','/nonexistent'))
+            if other.parent!=job and audio.is_file():candidates.append((other.stat().st_mtime,audio,data))
+        if not candidates:
+            raise ValueError('测试用的已下载音轨不存在，请让 Codex 选择其他测试音轨。')
+        _,source,source_meta=max(candidates,key=lambda item:item[0])
+        meta['url']=source_meta['url']
+        clip=job/'media'/'test-20-seconds.wav'
+        subprocess.run([reader.ffmpeg(),'-nostdin','-v','error','-y','-i',str(source),
+                        '-t','20',str(clip)],check=True)
+        meta.update(audio=str(clip),media=str(clip))
+        reader.save_json(existing,meta)
+        print('正在无窗口浏览器中上传20秒测试片段、等待千问转写并导出Word……',flush=True)
+        raw=export_audio(clip,job,meta,reader.save_json)
+        reader.save_json(job/'raw-transcript.json',raw)
+        reader.save_json(existing,meta)
+        document=reader.build_document(job,raw)
+        result.update(passed=True,document=str(document),elapsed_seconds=round(time.time()-result['started_at'],2),segments=len(raw['segments']))
+        print('独立后台完整流程测试通过。Word：'+str(document),flush=True)
+    except Exception as error:
+        result['error']=str(error)
+        # Retain current cloud task identity for a safe retry.
+        current=json.loads(existing.read_text()) if existing.exists() else meta
+        current.update(state='failed',error=str(error))
+        reader.save_json(existing,current)
+        print('测试未通过：'+str(error),flush=True)
+    finally:
+        reader.save_json(reader.WORK/'qianwen-smoke-test.json',result)
+    return 0 if result['passed'] else 1
+
+
+if __name__=='__main__':raise SystemExit(main())
+
+```
+
+### FILE: 测试千问后台流程.command
+```zsh
+#!/bin/zsh
+cd -- "${0:A:h}" || exit 1
+export SSL_CERT_FILE=/etc/ssl/cert.pem
+export NODE_EXTRA_CA_CERTS=/etc/ssl/cert.pem
+.venv/bin/python smoke_qianwen.py
+result=$?
+read '?测试结束，按回车关闭窗口。'
+exit "$result"
 
 ```
