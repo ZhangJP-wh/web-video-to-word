@@ -7,7 +7,7 @@
 	<key>CFBundleExecutable</key>
 	<string>WebVideoToWord</string>
 	<key>CFBundleIconFile</key>
-	<string>app.icns</string>
+	<string>app-current.icns</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.zhangjp.web-video-to-word.light</string>
 	<key>CFBundleName</key>
@@ -15,9 +15,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.3</string>
+	<string>1.0.4</string>
 	<key>CFBundleVersion</key>
-	<string>4</string>
+	<string>5</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoadsInWebContent</key>

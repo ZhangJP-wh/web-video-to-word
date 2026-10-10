@@ -4,7 +4,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate, WKNaviga
  var window: NSWindow!
  var web: WKWebView!
  func applicationDidFinishLaunching(_ notification: Notification) {
-  if let icon=Bundle.main.url(forResource:"app",withExtension:"icns") {NSApp.applicationIconImage=NSImage(contentsOf:icon)}
+  if let icon=Bundle.main.url(forResource:"app-current",withExtension:"icns") {NSApp.applicationIconImage=NSImage(contentsOf:icon)}
   NSApp.appearance = NSAppearance(named: .aqua)
   let config = WKWebViewConfiguration()
   web = WKWebView(frame: .zero, configuration: config)
