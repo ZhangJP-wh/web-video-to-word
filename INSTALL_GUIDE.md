@@ -184,6 +184,8 @@ B站下载兼容：可选播放接口仅返回访问验证凭据时，保留公�
 
 超过50MB的音频改由同一电脑上的浏览器直接选择文件路径，仍遵守千问500MB和6小时限制。YouTube访问验证与千问登录分别提示；匿名下载器未必能复用普通浏览器验证，可使用本地文件入口。
 
+YouTube要求登录或人机验证时，会打开隔离的专用浏览器窗口。本人完成验证后关闭该窗口，工具用该窗口的会话重试一次；15分钟未完成则保留任务。不会读取日常浏览器Cookie，验证不保证YouTube允许后台下载。专用资料位于私人work目录，不应公开。
+
 ## 仅收到本文档：完整源码
 
 AI Agent 可按 FILE 标记逐个提取文件，再核对文件校验.json；运行 `bash install.sh`。仅提取这里列出的公开源码，不迁移他人的登录资料。
@@ -992,7 +994,7 @@ document.querySelector('#runtime-close').onclick=()=>statusDialog.close();
 document.querySelector('#runtime-show').onclick=()=>{statusDialog.showModal();refreshRuntime()};
 async function refreshRuntime(){if(!statusDialog.open)return;let host=document.querySelector('#runtime-content');try{let response=await fetch('/runtime/status');if(!response.ok)throw Error('状态功能需要加载本次更新');let data=await response.json();host.replaceChildren();function row(text){let p=document.createElement('p');p.textContent=text;host.append(p)}row(data.browser);row('登录：'+(data.login.error||data.login.check_error||({valid:'已验证登录',required:'需要登录',unknown:'尚未确认'}[data.login.status]||'尚未确认')));for(let task of data.tasks){row(task.title+'：'+(stages[task.state]||task.state)+(task.error?'；'+task.error:'')+'；记录更新于 '+task.seconds_since_record_update+' 秒前'+(task.uploaded?'；已确认上传':''))}for(let page of data.pages){row('实际千问页面：'+(page.title||page.url));let img=document.createElement('img');img.alt='正在运行的千问页面截图';img.src='/runtime/page/'+page.index+'?at='+data.at;host.append(img)}if(!data.pages.length)row('当前暂无共享浏览器页面截图；旧任务还未接入共享浏览器时无法显示其实时页面。')}catch(e){host.textContent=e.message}}
 setInterval(refreshRuntime,3000);
-const stages={queued:'排队中',downloading:'正在下载',downloaded:'下载完成',diarizing:'正在准备千问识别',transcribing:'正在准备千问识别',cloud_preparing:'正在准备上传音频',cloud_transcribing:'等待千问处理结果或加载文稿页面',extracting_audio:'正在提取音频',cloud_connecting:'正在连接千问并检查登录',cloud_uploading:'正在向千问上传音频',cloud_confirming_upload:'等待千问页面确认上传记录（尚未确认成功）',retry_waiting:'页面加载超时，稍后自动重试',generating_document:'正在生成并检查 Word 文稿',cleaning:'Word 已生成，正在清理原音视频和临时文件',cloud_exporting:'正在导出千问原文 Word',completed:'Word 已生成，可以查看',login_required:'需要重新登录千问',failed:'处理失败，进度已保留'};
+const stages={youtube_verifying:'等待YouTube人工验证：请在弹出的窗口完成登录或验证，完成后关闭窗口，工具自动重试',queued:'排队中',downloading:'正在下载',downloaded:'下载完成',diarizing:'正在准备千问识别',transcribing:'正在准备千问识别',cloud_preparing:'正在准备上传音频',cloud_transcribing:'等待千问处理结果或加载文稿页面',extracting_audio:'正在提取音频',cloud_connecting:'正在连接千问并检查登录',cloud_uploading:'正在向千问上传音频',cloud_confirming_upload:'等待千问页面确认上传记录（尚未确认成功）',retry_waiting:'页面加载超时，稍后自动重试',generating_document:'正在生成并检查 Word 文稿',cleaning:'Word 已生成，正在清理原音视频和临时文件',cloud_exporting:'正在导出千问原文 Word',completed:'Word 已生成，可以查看',login_required:'需要重新登录千问',failed:'处理失败，进度已保留'};
 const msg=document.querySelector('#message');
 let deleteNoticeTimer;
 function renderDeletionResult(target,result){target.replaceChildren();let heading=document.createElement('div');heading.textContent=result.status==='success'?'删除成功':result.status==='pending'?'正在同步删除…':'删除失败';heading.style.color=result.status==='success'?'#176538':result.status==='pending'?'#8b4520':'#a52222';target.append(heading);if(result.elements){for(let element of result.elements){let row=document.createElement('div');row.textContent=element.label+'：'+element.detail;row.style.color=(element.status==='success'||(!element.status&&/^(删除成功|无需删除|未找到对应千问记录)/.test(element.detail)))?'#176538':element.status==='pending'?'#8b4520':'#a52222';target.append(row)}}else{let row=document.createElement('div');row.textContent=result.message;row.style.color=result.status==='success'?'#176538':'#a52222';target.append(row)}}
@@ -2077,9 +2079,19 @@ def prepare(args):
                     try:
                         info = downloader.extract_info(download_url(args.url), download=True)
                     except Exception as error:
-                        if 'No video formats found' in str(error) and 'bilibili.com' in args.url:
+                        from youtube_verification import needs_verification,verify
+                        if needs_verification(error):
+                            cookies=verify(download_url(args.url),job,meta,save_json)
+                            meta['state']='downloading';meta.pop('error',None);save_json(job/'job.json',meta)
+                            retry_options=dict(options);retry_options.pop('cookiesfrombrowser',None);retry_options['cookiefile']=str(cookies)
+                            try:
+                                with YoutubeDL(retry_options) as verified_downloader:
+                                    info=verified_downloader.extract_info(download_url(args.url),download=True)
+                            finally:
+                                cookies.unlink(missing_ok=True)
+                        elif 'No video formats found' in str(error) and 'bilibili.com' in args.url:
                             raise ValueError('B站未提供可下载的音视频地址，可能需要B站访问验证或登录；尚未上传千问。重复重试不一定有效，可使用本地文件入口。') from error
-                        raise
+                        else:raise
                     if not info or info.get('_type') in ('playlist', 'multi_video'):
                         raise ValueError('此页面包含多个媒体，请提供具体视频链接')
                     name = filename(info.get('title', '未命名音视频'))
@@ -3694,6 +3706,16 @@ class NumberTests(unittest.TestCase):
    self.assertEqual((output/'1 - title.docx').read_bytes(),b'example');self.assertFalse(old.exists());self.assertEqual(json.loads((job/'job.json').read_text())['document'],str(output/'1 - title.docx'))
 ```
 
+### FILE: test_youtube_verification.py
+```text
+import unittest
+from youtube_verification import needs_verification
+class VerificationTests(unittest.TestCase):
+ def test_youtube_challenge(self):self.assertTrue(needs_verification("ERROR: [youtube] abc: Sign in to confirm you’re not a bot"))
+ def test_other_failure_does_not_open_window(self):
+  for error in ["HTTP Error 403", "千问未登录", "[youtube] Video unavailable"]:self.assertFalse(needs_verification(error))
+```
+
 ### FILE: tools/build_guides.py
 ```text
 """Rebuild public self-contained guides from tracked source; never read work/."""
@@ -3705,7 +3727,7 @@ from docx import Document
 
 ROOT = Path(__file__).resolve().parents[1]
 files = sorted(subprocess.check_output(['git','ls-files','-z'], cwd=ROOT).decode().split('\0')[:-1])
-files = sorted(set(files + ['install.sh', 'test_install.py', 'tools/build_guides.py', 'runtime_compat.py', 'test_runtime_compat.py', 'install-windows.ps1', 'install-windows.cmd', 'start-windows.cmd', 'deletion_queue.py', 'test_deletion_queue.py', 'browser_service.py', 'test_browser_service.py', 'runtime_status.py', 'test_runtime_status.py', 'bilibili_download.py', 'test_bilibili_download.py', 'test_export_download.py', 'task_numbering.py', 'test_task_numbering.py', '修复浏览器占用并加载更新.command']))
+files = sorted(set(files + ['install.sh', 'test_install.py', 'tools/build_guides.py', 'runtime_compat.py', 'test_runtime_compat.py', 'install-windows.ps1', 'install-windows.cmd', 'start-windows.cmd', 'deletion_queue.py', 'test_deletion_queue.py', 'browser_service.py', 'test_browser_service.py', 'runtime_status.py', 'test_runtime_status.py', 'bilibili_download.py', 'test_bilibili_download.py', 'test_export_download.py', 'youtube_verification.py', 'test_youtube_verification.py', 'task_numbering.py', 'test_task_numbering.py', '修复浏览器占用并加载更新.command']))
 files = [f for f in files if f.endswith(('.py','.sh','.command','.html','.ps1','.cmd')) or f in ('requirements.txt','.gitignore')]
 checks = {f:hashlib.sha256((ROOT/f).read_bytes()).hexdigest() for f in files}
 (ROOT/'文件校验.json').write_text(json.dumps(checks,ensure_ascii=False,indent=2)+'\n', encoding="utf-8")
@@ -3728,6 +3750,50 @@ for line in text.splitlines():
     else: doc.add_paragraph(line)
 doc.save(ROOT/'安装与使用指南.docx')
 print(f'Rebuilt guides with {len(files)} public source files.')
+```
+
+### FILE: youtube_verification.py
+```text
+"""Human verification in an isolated visible browser; never reads everyday browser cookies."""
+import os,time
+from pathlib import Path
+from http.cookiejar import MozillaCookieJar,Cookie
+
+def needs_verification(message):
+    return '[youtube]' in str(message) and 'Sign in to confirm' in str(message)
+
+def verify(url,job,meta,save,timeout=900):
+    from playwright.sync_api import sync_playwright
+    os.environ.setdefault('PLAYWRIGHT_BROWSERS_PATH',str(Path(__file__).resolve().parent/'work/browser-bin'))
+    cookiefile=job/'youtube-session.cookies'
+    meta.update(state='youtube_verifying',error='请在弹出的YouTube专用窗口登录或完成人机验证，完成后关闭该窗口；工具将自动重试下载。')
+    save(job/'job.json',meta)
+    try:
+        with sync_playwright() as p:
+            context=p.chromium.launch_persistent_context(str(job/'youtube-browser-profile'),headless=False)
+            try:
+                page=context.pages[0] if context.pages else context.new_page()
+                page.goto(url,wait_until='domcontentloaded',timeout=60000)
+                deadline=time.monotonic()+timeout
+                jar=MozillaCookieJar(str(cookiefile))
+                while context.pages:
+                    if time.monotonic()>deadline:raise RuntimeError('YouTube人工验证等待超过15分钟，请重试后完成验证')
+                    try:
+                        for c in context.cookies():
+                            if not any((c['domain'].lstrip('.')==d or c['domain'].lstrip('.').endswith('.'+d)) for d in ('youtube.com','google.com')):continue
+                            expires=int(c['expires']) if c.get('expires',-1)>0 else None
+                            jar.set_cookie(Cookie(0,c['name'],c['value'],None,False,c['domain'],True,c['domain'].startswith('.'),c['path'],True,c['secure'],expires,expires is None,None,None,{},False))
+                        jar.save(ignore_discard=True,ignore_expires=True);cookiefile.chmod(0o600)
+                        context.pages[-1].wait_for_timeout(1000)
+                    except Exception:
+                        if not context.pages:break
+                        raise
+                if not cookiefile.exists():raise RuntimeError('未获得YouTube验证会话，请重新打开验证窗口')
+                return cookiefile
+            finally:
+                context.close()
+    except Exception as error:
+        raise RuntimeError('YouTube验证窗口未能完成：'+str(error)) from error
 ```
 
 ### FILE: 修复浏览器占用并加载更新.command
@@ -3904,14 +3970,14 @@ exit $result
   "check_recovery.py": "7fb929eabc113b13551764fe57caa4f72e7f37f6cded04a75c590fe54e1a3d2d",
   "cloud_migration.py": "cc5c02b953f404a280f0230e836ff9a5fe04f3e7002361ef9b8b8cdc244c07a0",
   "deletion_queue.py": "f9fef20b033ab62baa5fd40b4e1ce383d4bed3c8dde54f80a468417c03dc3cad",
-  "index.html": "52952764cbfdbc162a689348ac947be4b648fcf52f032c4e541a78bfaaf8d746",
+  "index.html": "910c2bbee351032d375aff76fbd53da4af9b06a65579dd9913abdb20e88d2f87",
   "install-windows.cmd": "181344afef4643cc95c8098d5839cdf8df98963e8d05a13991deb41c8a38c2ed",
   "install-windows.ps1": "727a49a50e928b435c2863aff20dd8b20be4b0c5662d971c71ac8a4554dbaedd",
   "install.py": "8fb062e855fb41616c65923dc4ca43808d4c710fc8919d1cb62c039a1fb2144c",
   "install.sh": "abead2c9d17bc14579905cab745be4220776c7d954a96042028c7b4855164826",
   "launch_service.py": "2cadb70ee153b678af24a6eb9e911d7e6e2ae4906ca8d3115ff8bb723d516dba",
   "qianwen_browser.py": "9ec0997fe8d21e15c169dd534c6b1686bcdbd4281497aa6a8ac3ad3b1d91e109",
-  "reader.py": "70a3c927f44100b9365c10478f0c46c2c50b4cff17b9662f292fa7e8b5cdd1ea",
+  "reader.py": "5c6aaaf88b1454db94bbd352f5dd736bf17c432af91fcbfa4a823e27cf633f22",
   "requirements.txt": "ca2ed115c7d5ef1c7d63e54519aa39795e35d48d74ac5e8b7be278ccc8e7f083",
   "runtime_compat.py": "88356cfde1ee32b4a9100f48ee374ed7e5ac0ba558f6a8626dde430c10b1191f",
   "runtime_status.py": "53e0df100829fd59b385b1fbdddb8bb0da17ff0a5ba88d91c2fb4b29ba2d5c3a",
@@ -3932,7 +3998,9 @@ exit $result
   "test_runtime_status.py": "4b255845c0a0fdb89f76f0fbd04d43d0162c35428ebef9ff3724470abbe6baca",
   "test_task_controls.py": "4c7ef80bd87e091c6140d660cacd406f932048ba89809b4a9236e1b327d3b9b5",
   "test_task_numbering.py": "0c1223029045edc6ff1210b2376505722b4e30f62ba4ab33c7d340042925afc8",
-  "tools/build_guides.py": "a39ba11ad1b2496aee4ef424db8acfadaf8af35c687abd45adebfb7f1ff3329c",
+  "test_youtube_verification.py": "e59cf4997a71b446f26d465080203dbdb71c4ebe1bb540237685d5bd748fb776",
+  "tools/build_guides.py": "bab736160e519602158394a37bc7fda1d6093336692664de320ae4da03f2e296",
+  "youtube_verification.py": "15565a36fa8ba520d184e0591327b56a7554f5827b9953a4d321816d73fd69ff",
   "修复浏览器占用并加载更新.command": "518dadc5853e369bd88d24645d55c42ef7af42595edd8f88defe62c3bb5a32d6",
   "停用自动启动.command": "0c2353cd41fd56b737864d09d6fe83f8b7d62cc1c51757e86fe0bc6bbd76b682",
   "切换千问并清理本地模型.command": "39ae5c718d5854f9fec85e13cd2c6fc683cb3c07844dffdd29697f97cfeeaaf4",
