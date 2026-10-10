@@ -43,6 +43,10 @@
 
 下载依赖 certifi 的可信证书。已将 certifi 列为必需组件并保留，清理旧模型时不会移除；不关闭 HTTPS 证书校验。若下载出现 CERTIFICATE_VERIFY_FAILED，请在项目中执行 `.venv/bin/python -m pip install -r requirements.txt` 恢复依赖后重试。
 
+## 抖音链接
+
+精选页中包含数字 modal_id 的链接会转换成 /video/视频编号 供下载器使用，Word 保留用户原链接。抖音仍可能要求有效浏览器 Cookie 并拒绝自动下载；转换链接不保证成功。当前页面没有抖音登录配置，不读取日常浏览器 Cookie，不绕过访问限制。
+
 ## 无声视频
 
 下载文件如果没有音轨，不能做语音识别。工具明确提示并保留媒体；如果网页播放有声音，请提供有声音的版本。工具不会把画面上的文字当作语音识别结果。
@@ -68,7 +72,7 @@
 
 ## 验证说明
 
-本次 26 项测试通过，其中云端识别返回结果在单元测试中模拟；旧本地推理断点测试已移除。此前本机20秒音频的千问后台完整流程约46秒，不能推断长视频速度或识别准确率。未在另一台全新 Mac 完成安装实测。
+本次 29 项测试通过，其中云端识别返回结果在单元测试中模拟；旧本地推理断点测试已移除。此前本机20秒音频的千问后台完整流程约46秒，不能推断长视频速度或识别准确率。未在另一台全新 Mac 完成安装实测。
 
 ## 主要文件
 
@@ -96,7 +100,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
-from reader import ROOT, WORK, OUTPUT, LEGACY_OUTPUT, NOTICE, save_json
+from reader import ROOT, WORK, OUTPUT, LEGACY_OUTPUT, NOTICE, save_json, download_url
 
 HOST = '127.0.0.1'
 PORT = int(os.environ.get('VIDEO_READER_PORT', '8767'))
@@ -157,7 +161,7 @@ def fetch_title(ident, url):
         result = subprocess.run(
             [str(ROOT / '.venv/bin/python'), '-m', 'yt_dlp', '--skip-download',
              '--no-playlist', '--ignore-no-formats-error', '--no-warnings',
-             '--socket-timeout', '8', '--retries', '0', '--print', 'title', url],
+             '--socket-timeout', '8', '--retries', '0', '--print', 'title', download_url(url)],
             capture_output=True, text=True, timeout=40)
         title = result.stdout.strip().splitlines()[-1] if result.stdout.strip() else ''
         if result.returncode or not title or title == 'NA':
@@ -996,6 +1000,16 @@ def make_blocks(segments, limit=2200):
             for i, seg in enumerate(segments) if seg.get('text', '').strip()]
 
 
+def download_url(url):
+    """Normalize Douyin modal pages without changing the source link in the document."""
+    from urllib.parse import urlparse,parse_qs
+    parts=urlparse(url)
+    if parts.hostname in ('douyin.com','www.douyin.com'):
+        ident=parse_qs(parts.query).get('modal_id',[''])[0]
+        if re.fullmatch(r'[0-9]+',ident):return 'https://www.douyin.com/video/'+ident
+    return url
+
+
 def extract_audio(executable,media,destination):
     result=subprocess.run([executable,'-nostdin','-v','error','-y','-i',str(media),
                            '-vn','-ac','1','-ar','16000','-c:a','pcm_s16le',str(destination)],
@@ -1055,7 +1069,7 @@ def prepare(args):
             if not meta.get('media') or not Path(meta['media']).exists():
                 media_folder.mkdir(parents=True, exist_ok=True)
                 with YoutubeDL(options) as downloader:
-                    info = downloader.extract_info(args.url, download=True)
+                    info = downloader.extract_info(download_url(args.url), download=True)
                     if not info or info.get('_type') in ('playlist', 'multi_video'):
                         raise ValueError('此页面包含多个媒体，请提供具体视频链接')
                     name = filename(info.get('title', '未命名音视频'))
@@ -1097,7 +1111,10 @@ def prepare(args):
             print(f'Word 已生成：{job}', flush=True)
         except Exception as error:
             from qianwen_browser import LoginRequired
-            meta.update(state='login_required' if isinstance(error,LoginRequired) else 'failed', error=str(error))
+            message=str(error)
+            if 'Fresh cookies' in message and 'Douyin' in message:
+                message='抖音限制了自动下载，需要有效的抖音浏览器 Cookie。精选页链接已转换成单视频地址，但尚未下载成功；千问转写尚未开始。'
+            meta.update(state='login_required' if isinstance(error,LoginRequired) else 'failed', error=message)
             save_json(job / 'job.json', meta)
             raise
 
@@ -1773,6 +1790,17 @@ class AudioExtractionTests(unittest.TestCase):
                 self.assertEqual(audio.getnchannels(),1)
                 self.assertGreater(audio.getnframes(),0)
 
+class DownloadLinkTests(unittest.TestCase):
+    def test_douyin_selected_video_is_normalized(self):
+        source='https://www.douyin.com/jingxuan?modal_id=7689068026368380196'
+        self.assertEqual(reader.download_url(source),'https://www.douyin.com/video/7689068026368380196')
+    def test_other_site_modal_parameter_is_untouched(self):
+        source='https://example.com/jingxuan?modal_id=123'
+        self.assertEqual(reader.download_url(source),source)
+    def test_invalid_douyin_id_is_untouched(self):
+        source='https://www.douyin.com/jingxuan?modal_id=invalid'
+        self.assertEqual(reader.download_url(source),source)
+
 ```
 
 ### FILE: test_task_controls.py
@@ -1942,7 +1970,7 @@ exit $result
 ### FILE: 文件校验.json
 ```text
 {
-  "test_reader.py": "cff139029d75e464f25a84e9f8e0283df6827691c1e125186fd1c82721ec4200",
+  "test_reader.py": "44db5108039e4ddc37b71a1aa75a52a7d9259a8787aaa0d14fb8d3f52b517bdb",
   "qianwen_browser.py": "f19cd54031b7d7c3f4dfe4fa13b7b03a11dbe49b859d79f52a3c9570c26f3cc3",
   "测试千问后台流程.command": "365ea7c455b38238341c79e3f2db6531de8053c34a909c4a210a19248a680c8c",
   "smoke_qianwen.py": "5a41ae58b74a8f2edaaadeb36c60235646989c5bdb2aa49e17d72dfd8778f71e",
@@ -1954,12 +1982,12 @@ exit $result
   "首次安装.command": "3386934c6c62f0983f9d9ee8541bf0d73a4fa671be319201efa649bf71c28d32",
   "task_controls.py": "a420be2ff8a6b4fc833d126f235e8a249c521e2a8c30435b36ebdf7426579084",
   "test_task_controls.py": "2a0d1da5b7de5a52a5d3c0257dd989341bccf00ba3cda5fd57fe98db25842644",
-  "reader.py": "480fb1b02df11b9d4b6f1cb8da486b6bf92ba6e3ac6095951cff5a7155c814bc",
+  "reader.py": "471e54c25778c6f00eed89124298e7808502366a8561e115710bd297a26357a0",
   "切换千问并清理本地模型.command": "39ae5c718d5854f9fec85e13cd2c6fc683cb3c07844dffdd29697f97cfeeaaf4",
   "smoke_qianwen_runner.py": "10c6047ad2b7ae20cac3945b41f8afdc047975fd2da3ef0dc576f3753a512409",
   "cloud_migration.py": "cc5c02b953f404a280f0230e836ff9a5fe04f3e7002361ef9b8b8cdc244c07a0",
   "自动恢复测试.command": "e5f7e855d99cd648d6ae2e1382da651e8afb7597f184e08d1661d6daef5cc7f6",
-  "app.py": "b7adb2011fe1eafbfdefdd0137cad3bb5944c331740526e5549d7ce0289b8ee4",
+  "app.py": "8a8779e13abfa8da12c953c2cf44de52729bd6963b31dbc6ce4c1b87b3fb618e",
   "加载本次更新.command": "ceabb97ebf2b3d7df5568844de02733bc9e09f9c877621985bdaf801a182b978",
   "配置千问登录.command": "3bc9b14516ab4c169b0cd7a9c595778965167f7f7ce533eab5ad7b3abd835fac",
   "install.py": "837ca16dea4cc1b6c258f5effb2eea8953577857a00a4b9b927624aff8a146e8",

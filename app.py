@@ -12,7 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
-from reader import ROOT, WORK, OUTPUT, LEGACY_OUTPUT, NOTICE, save_json
+from reader import ROOT, WORK, OUTPUT, LEGACY_OUTPUT, NOTICE, save_json, download_url
 
 HOST = '127.0.0.1'
 PORT = int(os.environ.get('VIDEO_READER_PORT', '8767'))
@@ -73,7 +73,7 @@ def fetch_title(ident, url):
         result = subprocess.run(
             [str(ROOT / '.venv/bin/python'), '-m', 'yt_dlp', '--skip-download',
              '--no-playlist', '--ignore-no-formats-error', '--no-warnings',
-             '--socket-timeout', '8', '--retries', '0', '--print', 'title', url],
+             '--socket-timeout', '8', '--retries', '0', '--print', 'title', download_url(url)],
             capture_output=True, text=True, timeout=40)
         title = result.stdout.strip().splitlines()[-1] if result.stdout.strip() else ''
         if result.returncode or not title or title == 'NA':

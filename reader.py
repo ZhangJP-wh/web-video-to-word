@@ -63,6 +63,16 @@ def make_blocks(segments, limit=2200):
             for i, seg in enumerate(segments) if seg.get('text', '').strip()]
 
 
+def download_url(url):
+    """Normalize Douyin modal pages without changing the source link in the document."""
+    from urllib.parse import urlparse,parse_qs
+    parts=urlparse(url)
+    if parts.hostname in ('douyin.com','www.douyin.com'):
+        ident=parse_qs(parts.query).get('modal_id',[''])[0]
+        if re.fullmatch(r'[0-9]+',ident):return 'https://www.douyin.com/video/'+ident
+    return url
+
+
 def extract_audio(executable,media,destination):
     result=subprocess.run([executable,'-nostdin','-v','error','-y','-i',str(media),
                            '-vn','-ac','1','-ar','16000','-c:a','pcm_s16le',str(destination)],
@@ -122,7 +132,7 @@ def prepare(args):
             if not meta.get('media') or not Path(meta['media']).exists():
                 media_folder.mkdir(parents=True, exist_ok=True)
                 with YoutubeDL(options) as downloader:
-                    info = downloader.extract_info(args.url, download=True)
+                    info = downloader.extract_info(download_url(args.url), download=True)
                     if not info or info.get('_type') in ('playlist', 'multi_video'):
                         raise ValueError('此页面包含多个媒体，请提供具体视频链接')
                     name = filename(info.get('title', '未命名音视频'))
@@ -164,7 +174,10 @@ def prepare(args):
             print(f'Word 已生成：{job}', flush=True)
         except Exception as error:
             from qianwen_browser import LoginRequired
-            meta.update(state='login_required' if isinstance(error,LoginRequired) else 'failed', error=str(error))
+            message=str(error)
+            if 'Fresh cookies' in message and 'Douyin' in message:
+                message='抖音限制了自动下载，需要有效的抖音浏览器 Cookie。精选页链接已转换成单视频地址，但尚未下载成功；千问转写尚未开始。'
+            meta.update(state='login_required' if isinstance(error,LoginRequired) else 'failed', error=message)
             save_json(job / 'job.json', meta)
             raise
 

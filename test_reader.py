@@ -127,3 +127,14 @@ class AudioExtractionTests(unittest.TestCase):
                 self.assertEqual(audio.getframerate(),16000)
                 self.assertEqual(audio.getnchannels(),1)
                 self.assertGreater(audio.getnframes(),0)
+
+class DownloadLinkTests(unittest.TestCase):
+    def test_douyin_selected_video_is_normalized(self):
+        source='https://www.douyin.com/jingxuan?modal_id=7689068026368380196'
+        self.assertEqual(reader.download_url(source),'https://www.douyin.com/video/7689068026368380196')
+    def test_other_site_modal_parameter_is_untouched(self):
+        source='https://example.com/jingxuan?modal_id=123'
+        self.assertEqual(reader.download_url(source),source)
+    def test_invalid_douyin_id_is_untouched(self):
+        source='https://www.douyin.com/jingxuan?modal_id=invalid'
+        self.assertEqual(reader.download_url(source),source)
