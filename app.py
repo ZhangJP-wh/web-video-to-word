@@ -1,4 +1,5 @@
 """Loopback-only background transcription and Word export."""
+import os
 import hashlib
 import html
 import json
@@ -14,7 +15,7 @@ from urllib.parse import urlparse
 from reader import ROOT, WORK, OUTPUT, LEGACY_OUTPUT, NOTICE, save_json
 
 HOST = '127.0.0.1'
-PORT = 8767
+PORT = int(os.environ.get('VIDEO_READER_PORT', '8767'))
 tasks = queue.Queue()
 pending = set()
 mutex = threading.Lock()
@@ -52,8 +53,45 @@ def preview_document(ident):
 
 def reveal_document(ident):
     path = document_path(ident)
-    subprocess.run(['/usr/bin/open', '-R', str(path)], check=True, timeout=15)
+    result = subprocess.run(['/usr/bin/open', '-a', 'Finder', str(path.parent)],
+                            capture_output=True, text=True, timeout=15)
+    if result.returncode:
+        raise ValueError('Mac 未能打开 Finder。请从 Finder 双击启动文件，在正常环境中重启网页服务后再试。')
 
+
+
+def fetch_title(ident, url):
+    """Resolve metadata independently of the sequential transcription queue."""
+    try:
+        result = subprocess.run(
+            [str(ROOT / '.venv/bin/python'), '-m', 'yt_dlp', '--skip-download',
+             '--no-playlist', '--ignore-no-formats-error', '--no-warnings',
+             '--socket-timeout', '8', '--retries', '0', '--print', 'title', url],
+            capture_output=True, text=True, timeout=40)
+        title = result.stdout.strip().splitlines()[-1] if result.stdout.strip() else ''
+        if result.returncode or not title or title == 'NA':
+            return
+        with mutex:
+            path = WORK / 'jobs' / ident / 'job.json'
+            meta = json.loads(path.read_text())
+            # Active reader owns job.json. Separate metadata avoids competing writes.
+            save_json(path.parent / 'page-title.json', {'title': title, 'url': url})
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
+
+
+def start_title_lookup(ident, url):
+    threading.Thread(target=fetch_title, args=(ident, url), daemon=True).start()
+
+
+def resume_jobs():
+    # After restarting the web service, leave an existing reader process running.
+    for item in sorted(list_jobs(), key=lambda item: item['created_at']):
+        if item.get('state') not in ('completed', 'failed'):
+            pending.add(item['id'])
+            tasks.put((item['id'], item['url']))
+            if not item.get('title'):
+                start_title_lookup(item['id'], item['url'])
 
 def task_created_at(folder):
     marker = folder / '.prepare.lock'
@@ -68,6 +106,9 @@ def list_jobs():
         try:
             item = json.loads(path.read_text())
             item['id'] = path.parent.name
+            title_path = path.parent / 'page-title.json'
+            if not item.get('title') and title_path.exists():
+                item['title'] = json.loads(title_path.read_text()).get('title')
             item['created_at'] = item.get('created_at', task_created_at(path.parent))
             item['has_document'] = bool(item.get('document') and Path(item['document']).is_file())
             items.append(item)
@@ -81,6 +122,15 @@ def worker():
         ident, url = tasks.get()
         try:
             folder = WORK / 'jobs' / ident
+            import fcntl
+            with (folder / '.prepare.lock').open('a') as lock:
+                while True:
+                    try:
+                        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        fcntl.flock(lock, fcntl.LOCK_UN)
+                        break
+                    except BlockingIOError:
+                        time.sleep(2)
             with (folder / 'run.log').open('ab') as log:
                 result = subprocess.run([str(ROOT / '.venv/bin/python'), str(ROOT / 'reader.py'),
                                         'prepare', url], stdout=log, stderr=log)
@@ -116,6 +166,8 @@ def enqueue(url):
             save_json(folder / 'job.json', meta)
         pending.add(ident)
         tasks.put((ident, url))
+        if not meta.get('title'):
+            start_title_lookup(ident, url)
     return ident
 
 
@@ -180,6 +232,7 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == '__main__':
     (WORK / 'jobs').mkdir(parents=True, exist_ok=True)
     server = ThreadingHTTPServer((HOST, PORT), Handler)
+    resume_jobs()
     threading.Thread(target=worker, daemon=True).start()
     print(f'音视频文稿队列：http://{HOST}:{PORT}', flush=True)
     server.serve_forever()

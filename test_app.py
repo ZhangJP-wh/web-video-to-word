@@ -39,11 +39,38 @@ class PageTests(unittest.TestCase):
             root = Path(tmp)
             job, output, path = self.fixture(root)
             with patch.object(app, 'WORK', root / 'work'), patch.object(app, 'OUTPUT', output), patch('app.subprocess.run') as run:
+                run.return_value.returncode = 0
                 app.reveal_document(job.name)
-                run.assert_called_once_with(['/usr/bin/open', '-R', str(path.resolve())], check=True, timeout=15)
+                run.assert_called_once_with(['/usr/bin/open', '-a', 'Finder', str(path.resolve().parent)], capture_output=True, text=True, timeout=15)
                 path.unlink()
                 with self.assertRaises(ValueError):
                     app.reveal_document(job.name)
+
+    def test_queued_title_is_read_from_separate_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            job = root / 'jobs/123456abcdef'
+            job.mkdir(parents=True)
+            (job / 'job.json').write_text(json.dumps({'url': 'https://example.com/v', 'state': 'queued'}))
+            (job / 'page-title.json').write_text(json.dumps({'title': '对话视频'}))
+            with patch.object(app, 'WORK', root):
+                items = app.list_jobs()
+            self.assertEqual(items[0]['title'], '对话视频')
+            self.assertEqual(items[0]['state'], 'queued')
+
+    def test_title_lookup_does_not_overwrite_active_progress(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            job = root / 'jobs/123456abcdef'
+            job.mkdir(parents=True)
+            meta = {'url': 'https://example.com/v', 'state': 'transcribing', 'transcribed_seconds': 123}
+            (job / 'job.json').write_text(json.dumps(meta))
+            with patch.object(app, 'WORK', root), patch('app.subprocess.run') as run:
+                run.return_value.returncode = 0
+                run.return_value.stdout = '对话标题\n'
+                app.fetch_title(job.name, meta['url'])
+            self.assertEqual(json.loads((job / 'job.json').read_text()), meta)
+            self.assertEqual(json.loads((job / 'page-title.json').read_text())['title'], '对话标题')
 
 
 if __name__ == '__main__':

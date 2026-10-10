@@ -2,7 +2,7 @@
 
 版本：2026-10-07。适用对象：电脑初学者，以及具备本地文件、终端和网络权限的 AI Agent。
 
-这是一份可独立交给 Agent 的指南：附录包含本分享版的完整源码和校验值。本项目的 GitHub 地址为 https://github.com/ZhangJP-wh/web-video-to-word- 。可点击 Code → Download ZIP 下载源码。从 GitHub 下载时，解压得到的文件夹改名为 VideoTranscript 即可；拿到配套源码 ZIP 时可以直接解压；只有本文时，Agent 可以按第 11 节提取附录源码。普通读者只需读第 1～8 节，代码附录不必逐行阅读。
+这是一份可独立交给 Agent 的指南：附录包含本分享版的完整源码和校验值。本项目的 GitHub 地址为 https://github.com/ZhangJP-wh/web-video-to-word- 。可点击 Code → Download ZIP 下载源码。拿到配套源码 ZIP 时可以直接解压；只有本文时，Agent 可以按第 11 节提取附录源码。普通读者只需读第 1～8 节，代码附录不必逐行阅读。
 
 ## 1. 这个工具做什么
 
@@ -124,7 +124,7 @@ cd "$HOME/VideoTranscript"
 .venv/bin/python -m unittest test_reader test_app -q
 ```
 
-pip check 应显示 No broken requirements found；单元测试应显示 OK。当前分享版有 7 项测试，其中 ASR 使用模拟结果，验证文档生成、时间戳与发言人写入、失败保护和页面功能。它们不是模型听写准确率测试，也不是真实网站下载测试。
+pip check 应显示 No broken requirements found；单元测试应显示 OK。当前分享版有 9 项测试，其中 ASR 使用模拟结果，验证文档生成、时间戳与发言人写入、失败保护和页面功能。它们不是模型听写准确率测试，也不是真实网站下载测试。
 
 ### 6.2 不依赖视频网站登录的短音频实测
 
@@ -216,7 +216,7 @@ df -h "$HOME"
 
 ### A2：源码准备
 
-有源码 ZIP 就解压至目标目录；只有本文则运行第 11 节提取程序。先验证 文件校验.json；源码应不包含分享者电脑的专用路径、个人历史任务 ID、个人 job.json、Cookie、.venv 或 work/model-cache。附录源码仅用于建立朋友电脑上的副本，不修改分享者正在运行的工具。
+有源码 ZIP 就解压至目标目录；只有本文则运行第 11 节提取程序。先验证 文件校验.json；源码应不包含 分享者个人目录 的专用路径、个人历史任务 ID、个人 job.json、Cookie、.venv 或 work/model-cache。附录源码仅用于建立朋友电脑上的副本，不修改分享者正在运行的工具。
 
 ### A3：安装与下载
 
@@ -225,7 +225,7 @@ cd "$HOME/VideoTranscript"
 python3.12 install.py
 ```
 
-成功条件：pip check 通过，7 项单元测试 OK，prefetch_model.py 完成、模型路径存在、声纹模型可加载、FFmpeg 路径可执行。安装中不要自动清空共享 Hugging Face 缓存，也不要同时下载其他 ASR 大模型。下载失败与真实推理失败分别记录。
+成功条件：pip check 通过，9 项单元测试 OK，prefetch_model.py 完成、模型路径存在、声纹模型可加载、FFmpeg 路径可执行。安装中不要自动清空共享 Hugging Face 缓存，也不要同时下载其他 ASR 大模型。下载失败与真实推理失败分别记录。
 
 模型主要约 4.4GB，断点下载与解压期间可能需要额外空间。当前安装脚本是幂等的基本安装流程，不是已签名的 macOS App 安装器。重复安装不会自动删除工作记录，但也不保证跨依赖大版本更新完全可复现。
 
@@ -303,6 +303,7 @@ PY
 ### FILE: app.py
 ```python
 """Loopback-only background transcription and Word export."""
+import os
 import hashlib
 import html
 import json
@@ -318,7 +319,7 @@ from urllib.parse import urlparse
 from reader import ROOT, WORK, OUTPUT, LEGACY_OUTPUT, NOTICE, save_json
 
 HOST = '127.0.0.1'
-PORT = 8767
+PORT = int(os.environ.get('VIDEO_READER_PORT', '8767'))
 tasks = queue.Queue()
 pending = set()
 mutex = threading.Lock()
@@ -356,8 +357,45 @@ def preview_document(ident):
 
 def reveal_document(ident):
     path = document_path(ident)
-    subprocess.run(['/usr/bin/open', '-R', str(path)], check=True, timeout=15)
+    result = subprocess.run(['/usr/bin/open', '-a', 'Finder', str(path.parent)],
+                            capture_output=True, text=True, timeout=15)
+    if result.returncode:
+        raise ValueError('Mac 未能打开 Finder。请从 Finder 双击启动文件，在正常环境中重启网页服务后再试。')
 
+
+
+def fetch_title(ident, url):
+    """Resolve metadata independently of the sequential transcription queue."""
+    try:
+        result = subprocess.run(
+            [str(ROOT / '.venv/bin/python'), '-m', 'yt_dlp', '--skip-download',
+             '--no-playlist', '--ignore-no-formats-error', '--no-warnings',
+             '--socket-timeout', '8', '--retries', '0', '--print', 'title', url],
+            capture_output=True, text=True, timeout=40)
+        title = result.stdout.strip().splitlines()[-1] if result.stdout.strip() else ''
+        if result.returncode or not title or title == 'NA':
+            return
+        with mutex:
+            path = WORK / 'jobs' / ident / 'job.json'
+            meta = json.loads(path.read_text())
+            # Active reader owns job.json. Separate metadata avoids competing writes.
+            save_json(path.parent / 'page-title.json', {'title': title, 'url': url})
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
+
+
+def start_title_lookup(ident, url):
+    threading.Thread(target=fetch_title, args=(ident, url), daemon=True).start()
+
+
+def resume_jobs():
+    # After restarting the web service, leave an existing reader process running.
+    for item in sorted(list_jobs(), key=lambda item: item['created_at']):
+        if item.get('state') not in ('completed', 'failed'):
+            pending.add(item['id'])
+            tasks.put((item['id'], item['url']))
+            if not item.get('title'):
+                start_title_lookup(item['id'], item['url'])
 
 def task_created_at(folder):
     marker = folder / '.prepare.lock'
@@ -372,6 +410,9 @@ def list_jobs():
         try:
             item = json.loads(path.read_text())
             item['id'] = path.parent.name
+            title_path = path.parent / 'page-title.json'
+            if not item.get('title') and title_path.exists():
+                item['title'] = json.loads(title_path.read_text()).get('title')
             item['created_at'] = item.get('created_at', task_created_at(path.parent))
             item['has_document'] = bool(item.get('document') and Path(item['document']).is_file())
             items.append(item)
@@ -385,6 +426,15 @@ def worker():
         ident, url = tasks.get()
         try:
             folder = WORK / 'jobs' / ident
+            import fcntl
+            with (folder / '.prepare.lock').open('a') as lock:
+                while True:
+                    try:
+                        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        fcntl.flock(lock, fcntl.LOCK_UN)
+                        break
+                    except BlockingIOError:
+                        time.sleep(2)
             with (folder / 'run.log').open('ab') as log:
                 result = subprocess.run([str(ROOT / '.venv/bin/python'), str(ROOT / 'reader.py'),
                                         'prepare', url], stdout=log, stderr=log)
@@ -420,6 +470,8 @@ def enqueue(url):
             save_json(folder / 'job.json', meta)
         pending.add(ident)
         tasks.put((ident, url))
+        if not meta.get('title'):
+            start_title_lookup(ident, url)
     return ident
 
 
@@ -484,6 +536,7 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == '__main__':
     (WORK / 'jobs').mkdir(parents=True, exist_ok=True)
     server = ThreadingHTTPServer((HOST, PORT), Handler)
+    resume_jobs()
     threading.Thread(target=worker, daemon=True).start()
     print(f'音视频文稿队列：http://{HOST}:{PORT}', flush=True)
     server.serve_forever()
@@ -511,8 +564,9 @@ const stages={queued:'排队中',downloading:'正在下载',downloaded:'下载�
 const msg=document.querySelector('#message');
 async function post(url,data){let r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});let j=await r.json();if(!r.ok)throw Error(j.error);return j}
 document.querySelector('#form').onsubmit=async e=>{e.preventDefault();try{await post('/jobs',{url:document.querySelector('#url').value});msg.textContent='已加入后台队列。你可以继续做其他事情，稍后回来查看文稿。';await refresh()}catch(e){msg.textContent=e.message}};
+function taskHeading(j){let title=j.title;if(j.state==='queued')return '待处理 · '+(title||'正在获取标题（'+new URL(j.url).hostname+' / '+(new URL(j.url).searchParams.get('v')||new URL(j.url).pathname.split('/').filter(Boolean).pop()||j.id)+'）');return title||'正在获取标题 · '+j.id}
 function link(text,url,style){let a=document.createElement('a');a.textContent=text;a.href=url;if(style)a.className=style;return a}
-async function refresh(){try{let jobs=await(await fetch('/jobs')).json();jobs.sort((a,b)=>(b.created_at??historicalTaskTimes[b.id]??b.added_at??Infinity)-(a.created_at??historicalTaskTimes[a.id]??a.added_at??Infinity));let host=document.querySelector('#jobs');host.replaceChildren();for(let j of jobs){let card=document.createElement('article');let h=document.createElement('h2');h.textContent=j.title||'待处理音视频';card.append(h);let p=document.createElement('p');p.textContent=(j.document&&!j.has_document)?'Word 文件已不在原保存位置，重新提交链接可生成':(stages[j.state]||'准备生成文稿');if(j.state==='transcribing'&&j.transcribed_seconds)p.textContent+=' · '+Math.floor(j.transcribed_seconds/60)+' / '+Math.ceil(j.audio_duration/60)+' 分钟';card.append(p);card.append(link('原网页',j.url));if(j.error){let err=document.createElement('p');err.textContent=j.error;card.append(err)}if(j.cleanup_error){let note=document.createElement('p');note.textContent='Word 已生成，但部分临时文件未清理：'+j.cleanup_error;card.append(note)}if(j.has_document){let actions=document.createElement('p');actions.className='actions';actions.append(link('查看 Word 文稿','/preview/'+j.id,'action'));let reveal=document.createElement('button');reveal.className='secondary';reveal.textContent='打开文档所在位置';reveal.onclick=async()=>{try{await post('/reveal/'+j.id,{});msg.textContent='已在 Finder 中显示该 Word 文件。'}catch(e){msg.textContent=e.message}};actions.append(reveal);let download=link('下载 Word','/document/'+j.id,'action secondary');download.download=j.name+'.docx';actions.append(download);card.append(actions);let note=document.createElement('small');note.textContent=j.temporary_files_removed?(j.media_trashed?'原音视频已移入废纸篓，临时音轨已清理。':'原音视频与临时音轨已清理。'):'Word 内容未经人工校对。';card.append(note)}host.append(card)}}catch(e){msg.textContent='后台连接中断，请重新启动工具。'}}
+async function refresh(){try{let jobs=await(await fetch('/jobs')).json();jobs.sort((a,b)=>(b.created_at??historicalTaskTimes[b.id]??b.added_at??Infinity)-(a.created_at??historicalTaskTimes[a.id]??a.added_at??Infinity));let host=document.querySelector('#jobs');host.replaceChildren();for(let j of jobs){let card=document.createElement('article');let h=document.createElement('h2');h.textContent=taskHeading(j);card.append(h);let p=document.createElement('p');p.textContent=(j.document&&!j.has_document)?'Word 文件已不在原保存位置，重新提交链接可生成':(stages[j.state]||'准备生成文稿');if(j.state==='transcribing'&&j.transcribed_seconds)p.textContent+=' · '+Math.floor(j.transcribed_seconds/60)+' / '+Math.ceil(j.audio_duration/60)+' 分钟';card.append(p);card.append(link('原网页',j.url));if(j.error){let err=document.createElement('p');err.textContent=j.error;card.append(err)}if(j.cleanup_error){let note=document.createElement('p');note.textContent='Word 已生成，但部分临时文件未清理：'+j.cleanup_error;card.append(note)}if(j.has_document){let actions=document.createElement('p');actions.className='actions';actions.append(link('查看 Word 文稿','/preview/'+j.id,'action'));let reveal=document.createElement('button');reveal.type='button';reveal.className='secondary';reveal.textContent='打开文档所在位置';let revealStatus=document.createElement('small');revealStatus.setAttribute('role','status');reveal.onclick=async()=>{reveal.disabled=true;revealStatus.textContent='正在打开文件夹…';try{await post('/reveal/'+j.id,{});revealStatus.textContent='已打开 Finder 文件夹。';msg.textContent='已打开文档所在的 Finder 文件夹。'}catch(e){revealStatus.textContent='打开失败：'+e.message;msg.textContent='打开失败：'+e.message}finally{reveal.disabled=false}};actions.append(reveal);actions.append(revealStatus);let download=link('下载 Word','/document/'+j.id,'action secondary');download.download=j.name+'.docx';actions.append(download);card.append(actions);let note=document.createElement('small');note.textContent=j.temporary_files_removed?(j.media_trashed?'原音视频已移入废纸篓，临时音轨已清理。':'原音视频与临时音轨已清理。'):'Word 内容未经人工校对。';card.append(note)}host.append(card)}}catch(e){msg.textContent='后台连接中断，请重新启动工具。'}}
 refresh();setInterval(refresh,6000);
 </script></html>
 
@@ -1072,11 +1126,38 @@ class PageTests(unittest.TestCase):
             root = Path(tmp)
             job, output, path = self.fixture(root)
             with patch.object(app, 'WORK', root / 'work'), patch.object(app, 'OUTPUT', output), patch('app.subprocess.run') as run:
+                run.return_value.returncode = 0
                 app.reveal_document(job.name)
-                run.assert_called_once_with(['/usr/bin/open', '-R', str(path.resolve())], check=True, timeout=15)
+                run.assert_called_once_with(['/usr/bin/open', '-a', 'Finder', str(path.resolve().parent)], capture_output=True, text=True, timeout=15)
                 path.unlink()
                 with self.assertRaises(ValueError):
                     app.reveal_document(job.name)
+
+    def test_queued_title_is_read_from_separate_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            job = root / 'jobs/123456abcdef'
+            job.mkdir(parents=True)
+            (job / 'job.json').write_text(json.dumps({'url': 'https://example.com/v', 'state': 'queued'}))
+            (job / 'page-title.json').write_text(json.dumps({'title': '对话视频'}))
+            with patch.object(app, 'WORK', root):
+                items = app.list_jobs()
+            self.assertEqual(items[0]['title'], '对话视频')
+            self.assertEqual(items[0]['state'], 'queued')
+
+    def test_title_lookup_does_not_overwrite_active_progress(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            job = root / 'jobs/123456abcdef'
+            job.mkdir(parents=True)
+            meta = {'url': 'https://example.com/v', 'state': 'transcribing', 'transcribed_seconds': 123}
+            (job / 'job.json').write_text(json.dumps(meta))
+            with patch.object(app, 'WORK', root), patch('app.subprocess.run') as run:
+                run.return_value.returncode = 0
+                run.return_value.stdout = '对话标题\n'
+                app.fetch_title(job.name, meta['url'])
+            self.assertEqual(json.loads((job / 'job.json').read_text()), meta)
+            self.assertEqual(json.loads((job / 'page-title.json').read_text())['title'], '对话标题')
 
 
 if __name__ == '__main__':
@@ -1237,17 +1318,18 @@ print '确认页面能打开后，这个终端窗口可以关闭。'
 ### FILE: 文件校验.json
 ```json
 {
-  "app.py": "d59c4644184718ccb289d6aebc838e97ec0b0bf8072eee4d9555a8bd024840d5",
-  "index.html": "2a8d064e71b2029b42867caf481aa118f673bcd244d14b3aa524a6ab7614de59",
+  "app.py": "74db0bed1e6ad6af8963548c9d5a8d74f9f971a38cf1bbdcda551d40b850adf9",
+  "index.html": "28153eca7502ca97f4d6c1667c6daae8344a7afb2e01820ee451383e627e0d7e",
   "install.py": "d423b71bfd29145b2b6616da4b6474ad86beec07813eb8c9c36330ed298f19bb",
   "prefetch_model.py": "1c7512114bdb7d49b6a2d8a4199452f5291ad4c04fc4effa4e329b4dab227df3",
   "reader.py": "90dceae00db3c5f91a0eadecb20a9e7347b709de33241bf3eff11d680e83f3a6",
   "requirements.txt": "aa237150a51d1f468ccab935e7ccd3235beddaf60afb9719676dc7f8fbf63e7c",
-  "test_app.py": "d26c11cc60a4d521ac7be9cb1c57394781456b667b2d666796f0f68b4053b4a2",
+  "test_app.py": "3bb5c3f39a4d7c0782a0a7a970e5580bc69d8204c3170468a166a2d556f84737",
   "test_reader.py": "ea7af8f55bfe4c47023ee9f712b6b078cfc9dd0beedec2325134556970fdc059",
   "启动工具.command": "f67940511e7be84f96ef4eadc60dee14b08668d185f06f94cd03a02ebd3d59ca",
   "首次安装.command": "3386934c6c62f0983f9d9ee8541bf0d73a4fa671be319201efa649bf71c28d32"
 }
+
 ```
 
 ### FILE: 首次安装.command
