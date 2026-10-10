@@ -38,7 +38,7 @@ def main():
     from packaging.requirements import Requirement
     normalize=lambda value:value.lower().replace('_','-').replace('.','-')
     installed={normalize(d.metadata['Name']):d for d in distributions()}
-    keep=set(); pending=['yt-dlp','python-docx','imageio-ffmpeg','send2trash','ds-store','playwright','pip','setuptools','packaging']
+    keep=set(); pending=['yt-dlp','python-docx','imageio-ffmpeg','send2trash','ds-store','playwright','pip','setuptools','packaging','certifi']
     while pending:
         name=normalize(pending.pop())
         if name in keep:continue

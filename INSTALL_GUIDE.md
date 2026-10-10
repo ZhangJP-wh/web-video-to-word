@@ -35,6 +35,10 @@
 
 更新时停止服务，备份 work 中的任务记录与浏览器登录资料，替换源码和重新安装 requirements 后启动；不要用别人的登录资料覆盖自己的。朋友电脑不会因 GitHub 更新自动升级。
 
+## HTTPS 证书
+
+下载依赖 certifi 的可信证书。已将 certifi 列为必需组件并保留，清理旧模型时不会移除；不关闭 HTTPS 证书校验。若下载出现 CERTIFICATE_VERIFY_FAILED，请在项目中执行 `.venv/bin/python -m pip install -r requirements.txt` 恢复依赖后重试。
+
 ## 限制与隐私
 
 这是独立开源工具，“由千问提供支持”表示语音识别使用千问网页服务，不表示千问官方出品或合作授权。
@@ -490,7 +494,7 @@ def main():
     from packaging.requirements import Requirement
     normalize=lambda value:value.lower().replace('_','-').replace('.','-')
     installed={normalize(d.metadata['Name']):d for d in distributions()}
-    keep=set(); pending=['yt-dlp','python-docx','imageio-ffmpeg','send2trash','ds-store','playwright','pip','setuptools','packaging']
+    keep=set(); pending=['yt-dlp','python-docx','imageio-ffmpeg','send2trash','ds-store','playwright','pip','setuptools','packaging','certifi']
     while pending:
         name=normalize(pending.pop())
         if name in keep:continue
@@ -957,6 +961,8 @@ def make_blocks(segments, limit=2200):
 
 
 def prepare(args):
+    import certifi
+    os.environ['SSL_CERT_FILE'] = certifi.where()
     from yt_dlp import YoutubeDL
     from urllib.parse import urlparse
     if urlparse(args.url).scheme not in ('http', 'https'):
@@ -1230,6 +1236,7 @@ imageio-ffmpeg
 send2trash
 ds-store
 playwright
+certifi
 
 ```
 
@@ -1815,15 +1822,15 @@ exit $result
   "index.html": "05131b2ec6b632fdfcb5da59d1fbd08a08591958b20a491857c6ba61f1ece0f2",
   "停用自动启动.command": "0c2353cd41fd56b737864d09d6fe83f8b7d62cc1c51757e86fe0bc6bbd76b682",
   "launch_service.py": "2cadb70ee153b678af24a6eb9e911d7e6e2ae4906ca8d3115ff8bb723d516dba",
-  "requirements.txt": "1bef18e7e19cf30dd5dd0310e70ef0bbcc448d7632f896785981380e3f6f397b",
+  "requirements.txt": "8f1f858b32310780d785ef1d196205c8c85a0c44efbb9fe4124bf7e98c9a96d3",
   "启动工具.command": "f67940511e7be84f96ef4eadc60dee14b08668d185f06f94cd03a02ebd3d59ca",
   "首次安装.command": "3386934c6c62f0983f9d9ee8541bf0d73a4fa671be319201efa649bf71c28d32",
   "task_controls.py": "a420be2ff8a6b4fc833d126f235e8a249c521e2a8c30435b36ebdf7426579084",
   "test_task_controls.py": "7a07b1d54e383405a9914e69503319854a8cd543d7348c618e09a5744cc0ce30",
-  "reader.py": "f4b48a28caad4c8343886516109ac54c86ce5b9f3388b6c583ac9731755f2f98",
+  "reader.py": "9ebeb8e8987dbfa5bb8acda6fb4aecfa01fc722f46742d43564be1133006bd68",
   "切换千问并清理本地模型.command": "39ae5c718d5854f9fec85e13cd2c6fc683cb3c07844dffdd29697f97cfeeaaf4",
   "smoke_qianwen_runner.py": "10c6047ad2b7ae20cac3945b41f8afdc047975fd2da3ef0dc576f3753a512409",
-  "cloud_migration.py": "fb3a5efbd4b19206eb90ccf3bd4119de1b070fee14aa327e39c8ef6d1be71a8b",
+  "cloud_migration.py": "cc5c02b953f404a280f0230e836ff9a5fe04f3e7002361ef9b8b8cdc244c07a0",
   "自动恢复测试.command": "e5f7e855d99cd648d6ae2e1382da651e8afb7597f184e08d1661d6daef5cc7f6",
   "app.py": "b7adb2011fe1eafbfdefdd0137cad3bb5944c331740526e5549d7ce0289b8ee4",
   "加载本次更新.command": "ceabb97ebf2b3d7df5568844de02733bc9e09f9c877621985bdaf801a182b978",

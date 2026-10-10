@@ -4,3 +4,4 @@ imageio-ffmpeg
 send2trash
 ds-store
 playwright
+certifi

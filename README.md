@@ -35,6 +35,10 @@
 
 更新时停止服务，备份 work 中的任务记录与浏览器登录资料，替换源码和重新安装 requirements 后启动；不要用别人的登录资料覆盖自己的。朋友电脑不会因 GitHub 更新自动升级。
 
+## HTTPS 证书
+
+下载依赖 certifi 的可信证书。已将 certifi 列为必需组件并保留，清理旧模型时不会移除；不关闭 HTTPS 证书校验。若下载出现 CERTIFICATE_VERIFY_FAILED，请在项目中执行 `.venv/bin/python -m pip install -r requirements.txt` 恢复依赖后重试。
+
 ## 限制与隐私
 
 这是独立开源工具，“由千问提供支持”表示语音识别使用千问网页服务，不表示千问官方出品或合作授权。

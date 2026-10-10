@@ -64,6 +64,8 @@ def make_blocks(segments, limit=2200):
 
 
 def prepare(args):
+    import certifi
+    os.environ['SSL_CERT_FILE'] = certifi.where()
     from yt_dlp import YoutubeDL
     from urllib.parse import urlparse
     if urlparse(args.url).scheme not in ('http', 'https'):
