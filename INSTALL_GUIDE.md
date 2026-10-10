@@ -550,7 +550,7 @@ if __name__=='__main__':main()
 <html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>网页视频转语音识别文字稿（由千问提供支持）</title>
 <style>
-body{font:16px/1.7 -apple-system,BlinkMacSystemFont,sans-serif;color:#24322d;background:#f4f6f3;max-width:920px;margin:48px auto;padding:0 24px}h1{font-size:32px}h1 button{font-size:16px;font-weight:normal;vertical-align:middle;white-space:nowrap}input,button,.action{font:inherit;padding:10px 14px;border:1px solid #c6d1ca;border-radius:8px}input[type=url]{flex:1;min-width:180px}button,.action{background:#245441;color:white;cursor:pointer;text-decoration:none;display:inline-block}form,.actions{display:flex;gap:12px;flex-wrap:wrap}article{background:white;padding:24px;border:1px solid #e0e7e1;border-radius:12px;margin:20px 0}small{color:#62736b}a{color:#245441}#message{color:#8b4520}.notice{background:#fff3cd;color:#9c0006;padding:14px 18px;border-left:4px solid #b07800;font-weight:bold}.secondary{background:white;color:#245441}
+body{font:16px/1.7 -apple-system,BlinkMacSystemFont,sans-serif;color:#24322d;background:#f4f6f3;max-width:920px;margin:48px auto;padding:0 24px}h1{font-size:32px}h1 button{font-size:14px;padding:6px 10px;font-weight:normal;vertical-align:middle;white-space:nowrap}input,button,.action{font:inherit;padding:10px 14px;border:1px solid #c6d1ca;border-radius:8px}input[type=url]{flex:1;min-width:180px}button,.action{background:#245441;color:white;cursor:pointer;text-decoration:none;display:inline-block}form,.actions{display:flex;gap:12px;flex-wrap:wrap}article{background:white;padding:24px;border:1px solid #e0e7e1;border-radius:12px;margin:20px 0}small{color:#62736b}a{color:#245441}#message{color:#8b4520}.notice{background:#fff3cd;color:#9c0006;padding:14px 18px;border-left:4px solid #b07800;font-weight:bold}.secondary{background:white;color:#245441}
 #qianwen-login{background:#004B93;border-color:#004B93}#qianwen-login:hover{background:#003B75}#form button{background:#D65A00;border-color:#D65A00}#form button:hover{background:#B94D00}</style>
 <h1>网页视频转语音识别文字稿（由千问提供支持） <button type="button" id="qianwen-login">登录千问</button></h1>
 <p>粘贴网页链接，后台下载并默认交给千问识别语音、区分发言人，生成带时间戳、以视频标题命名的 Word。</p>
@@ -2136,7 +2136,7 @@ exit $result
   "qianwen_browser.py": "1c0d273d18ebe5451362705781360aeea8e6cc68368746de1edc392334483172",
   "测试千问后台流程.command": "365ea7c455b38238341c79e3f2db6531de8053c34a909c4a210a19248a680c8c",
   "smoke_qianwen.py": "5a41ae58b74a8f2edaaadeb36c60235646989c5bdb2aa49e17d72dfd8778f71e",
-  "index.html": "813cbd9f9b8dbccbd1e8c63d3b7170a34082ad7bbdb94d01ad815d8f023b8cba",
+  "index.html": "84f8937d61dd91b51b6aca64f6f7adbd090eb6d1110d01e2ad1fa77053fed5f0",
   "停用自动启动.command": "0c2353cd41fd56b737864d09d6fe83f8b7d62cc1c51757e86fe0bc6bbd76b682",
   "launch_service.py": "2cadb70ee153b678af24a6eb9e911d7e6e2ae4906ca8d3115ff8bb723d516dba",
   "requirements.txt": "8f1f858b32310780d785ef1d196205c8c85a0c44efbb9fe4124bf7e98c9a96d3",
