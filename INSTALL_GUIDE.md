@@ -37,6 +37,10 @@
 
 后台启动识别进程失败会显示具体失败原因，不会一直停在排队状态；个别任务记录异常不会停止后续队列。
 
+## 上传成功确认
+
+只有千问页面显示本次文件名对应的记录后，才标记上传确认成功。点击确认不再被当作成功依据。等待记录最多2分钟，期间保存页面诊断。没有确认时停止并保留音频，不自动重复上传；需检查页面后再恢复。记录存在也不等于转写完成。
+
 ## 运行状态
 
 状态对应实际步骤：下载、提取音频、准备上传音频、连接千问、上传、等待千问结果、导出原文、生成并检查 Word、清理媒体、完成。没有千问内部进度数据时，只显示等待结果，不断言云端正在识别。Word 生成后清理结束或记录清理错误，才显示完成。
@@ -78,7 +82,7 @@
 
 ## 验证说明
 
-本次 30 项测试通过，其中云端识别返回结果在单元测试中模拟；旧本地推理断点测试已移除。此前本机20秒音频的千问后台完整流程约46秒，不能推断长视频速度或识别准确率。未在另一台全新 Mac 完成安装实测。
+本次 32 项测试通过，其中云端识别返回结果在单元测试中模拟；旧本地推理断点测试已移除。此前本机20秒音频的千问后台完整流程约46秒，不能推断长视频速度或识别准确率。未在另一台全新 Mac 完成安装实测。
 
 ## 主要文件
 
@@ -557,7 +561,7 @@ body{font:16px/1.7 -apple-system,BlinkMacSystemFont,sans-serif;color:#24322d;bac
 <div id="jobs"></div>
 <script>
 const historicalTaskTimes={};
-const stages={queued:'排队中',downloading:'正在下载',downloaded:'下载完成',diarizing:'正在准备千问识别',transcribing:'正在准备千问识别',cloud_preparing:'正在准备上传音频',cloud_transcribing:'等待千问处理结果或加载文稿页面',extracting_audio:'正在提取音频',cloud_connecting:'正在连接千问并检查登录',cloud_uploading:'正在向千问上传音频',retry_waiting:'页面加载超时，稍后自动重试',generating_document:'正在生成并检查 Word 文稿',cleaning:'Word 已生成，正在清理原音视频和临时文件',cloud_exporting:'正在导出千问原文 Word',completed:'Word 已生成，可以查看',login_required:'需要重新登录千问',failed:'处理失败，进度已保留'};
+const stages={queued:'排队中',downloading:'正在下载',downloaded:'下载完成',diarizing:'正在准备千问识别',transcribing:'正在准备千问识别',cloud_preparing:'正在准备上传音频',cloud_transcribing:'等待千问处理结果或加载文稿页面',extracting_audio:'正在提取音频',cloud_connecting:'正在连接千问并检查登录',cloud_uploading:'正在向千问上传音频',cloud_confirming_upload:'等待千问页面确认上传记录（尚未确认成功）',retry_waiting:'页面加载超时，稍后自动重试',generating_document:'正在生成并检查 Word 文稿',cleaning:'Word 已生成，正在清理原音视频和临时文件',cloud_exporting:'正在导出千问原文 Word',completed:'Word 已生成，可以查看',login_required:'需要重新登录千问',failed:'处理失败，进度已保留'};
 const msg=document.querySelector('#message');
 async function requireControls(){let h=await(await fetch('/health')).json();if(!h.task_controls)throw Error('请双击“加载本次更新.command”，让网页服务加载登录和删除功能。')}
 document.querySelector('#qianwen-login').onclick=async()=>{try{await requireControls();let r=await post('/qianwen/login',{});msg.textContent=r.message}catch(e){msg.textContent=e.message}};
@@ -853,6 +857,24 @@ def export_panel(page,job):
     return panel,checks
 
 
+def confirm_submission(page,title,job,meta,save,timeout=120000):
+    from playwright.sync_api import TimeoutError as BrowserTimeout
+    meta['state']='cloud_confirming_upload';save(job/'job.json',meta)
+    deadline=time.monotonic()+timeout/1000
+    while time.monotonic()<deadline:
+        require_login_if_visible(page)
+        try:
+            page.get_by_text(title,exact=True).filter(visible=True).first.wait_for(timeout=10000)
+            meta.update(qianwen_submitted=True,qianwen_upload_confirmed=True,state='cloud_transcribing')
+            save(job/'job.json',meta)
+            return
+        except BrowserTimeout:
+            page.screenshot(path=str(job/'browser-diagnostic.png'),full_page=True)
+            (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
+            meta['last_browser_check']=time.time();save(job/'job.json',meta)
+    raise RuntimeError('千问页面未出现本次上传记录，尚未确认上传成功。已保留音频，请诊断后重试；不会重复自动上传。')
+
+
 def export_audio(audio, job, meta, save):
     from playwright.sync_api import sync_playwright
     from reader import ffmpeg, filename
@@ -880,16 +902,18 @@ def export_audio(audio, job, meta, save):
                 page.get_by_text('多人讨论', exact=True).click()
                 if not page.get_by_text('不翻译', exact=True).is_visible():
                     raise RuntimeError('未确认不翻译设置，停止上传')
-                if not meta.get('qianwen_submitted'):
+                if not meta.get('qianwen_submitted') and not meta.get('qianwen_submission_attempted'):
                     meta['state']='cloud_uploading';save(job/'job.json',meta)
                     with page.expect_file_chooser() as chooser:
                         page.get_by_role('button', name=re.compile('点击或将')).click()
                     chooser.value.set_files(str(upload))
+                    from playwright.sync_api import expect
+                    expect(page.get_by_role('button',name='确 认',exact=True)).to_be_enabled(timeout=120000)
+                    meta['qianwen_submission_attempted']=True;save(job/'job.json',meta)
                     page.get_by_role('button', name='确 认', exact=True).click()
                     require_login_if_visible(page)
-                    meta['qianwen_submitted'] = True; save(job/'job.json', meta)
-                meta['state'] = 'cloud_transcribing'; save(job/'job.json', meta)
                 title = upload.stem
+                confirm_submission(page,title,job,meta,save)
                 deadline = time.monotonic() + 6 * 3600
                 while time.monotonic() < deadline:
                     require_login_if_visible(page)
@@ -901,6 +925,9 @@ def export_audio(audio, job, meta, save):
                             meta['qianwen_url']=page.url;save(job/'job.json',meta)
                         page.get_by_role('button', name='导出', exact=True).wait_for(timeout=10000)
                     except BrowserTimeout:
+                        page.screenshot(path=str(job/'browser-diagnostic.png'),full_page=True)
+                        (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
+                        meta['last_browser_check']=time.time();save(job/'job.json',meta)
                         time.sleep(5)
                         continue
                     meta['qianwen_url'] = page.url; save(job/'job.json', meta)
@@ -1697,6 +1724,37 @@ class RecoveryTests(unittest.TestCase):
             expect.return_value.to_have_count.assert_called_once_with(5,timeout=30000)
         checks.count.assert_not_called()
 
+class UploadConfirmationTests(unittest.TestCase):
+    def page(self):
+        from unittest.mock import MagicMock
+        page=MagicMock()
+        page.get_by_role.return_value.filter.return_value.all.return_value=[]
+        page.get_by_role.return_value.all.return_value=[]
+        page.locator.return_value.inner_text.return_value='最近记录'
+        return page
+
+    def test_submission_requires_visible_record(self):
+        import qianwen_browser as browser
+        page=self.page();meta={'qianwen_submission_attempted':True}
+        with tempfile.TemporaryDirectory() as tmp:
+            browser.confirm_submission(page,'test-task',Path(tmp),meta,lambda *args:None)
+        page.get_by_text.return_value.filter.return_value.first.wait_for.assert_called_once_with(timeout=10000)
+        self.assertTrue(meta['qianwen_upload_confirmed'])
+        self.assertEqual(meta['state'],'cloud_transcribing')
+
+    def test_absent_record_does_not_claim_submission_success(self):
+        from unittest.mock import patch
+        from playwright.sync_api import TimeoutError
+        import qianwen_browser as browser
+        page=self.page();page.get_by_text.return_value.filter.return_value.first.wait_for.side_effect=TimeoutError('absent')
+        meta={'qianwen_submission_attempted':True}
+        with tempfile.TemporaryDirectory() as tmp,patch.object(browser.time,'monotonic',side_effect=[0,0,130]):
+            with self.assertRaisesRegex(RuntimeError,'未出现本次上传记录'):
+                browser.confirm_submission(page,'test-task',Path(tmp),meta,lambda *args:None)
+        self.assertFalse(meta.get('qianwen_upload_confirmed',False))
+        self.assertEqual(meta['state'],'cloud_confirming_upload')
+        page.screenshot.assert_called_once()
+
 if __name__=='__main__':unittest.main()
 
 ```
@@ -2014,10 +2072,10 @@ exit $result
 ```text
 {
   "test_reader.py": "44db5108039e4ddc37b71a1aa75a52a7d9259a8787aaa0d14fb8d3f52b517bdb",
-  "qianwen_browser.py": "3f2f4655e7ddd3dfdc4a19b85d4b0b25959803baee841cd43523e55fc5c367b4",
+  "qianwen_browser.py": "08f4b1bebdc4864c6c7a10a4ade69133aeb6cff622bdb8548777ab5902113990",
   "测试千问后台流程.command": "365ea7c455b38238341c79e3f2db6531de8053c34a909c4a210a19248a680c8c",
   "smoke_qianwen.py": "5a41ae58b74a8f2edaaadeb36c60235646989c5bdb2aa49e17d72dfd8778f71e",
-  "index.html": "7a96b77ad812eb08159432d66d118916e31dea5f775996a5d68a41991f9fe9cc",
+  "index.html": "c08bc216839f6f4e340af83ff3aa4e3969d033658155e192d3e1b5b05c3aa354",
   "停用自动启动.command": "0c2353cd41fd56b737864d09d6fe83f8b7d62cc1c51757e86fe0bc6bbd76b682",
   "launch_service.py": "2cadb70ee153b678af24a6eb9e911d7e6e2ae4906ca8d3115ff8bb723d516dba",
   "requirements.txt": "8f1f858b32310780d785ef1d196205c8c85a0c44efbb9fe4124bf7e98c9a96d3",
@@ -2034,7 +2092,7 @@ exit $result
   "加载本次更新.command": "ceabb97ebf2b3d7df5568844de02733bc9e09f9c877621985bdaf801a182b978",
   "配置千问登录.command": "3bc9b14516ab4c169b0cd7a9c595778965167f7f7ce533eab5ad7b3abd835fac",
   "install.py": "837ca16dea4cc1b6c258f5effb2eea8953577857a00a4b9b927624aff8a146e8",
-  "test_qianwen.py": "8c7b820b2a463d3eb009a2a0affa96927a3acca9889ab84c420657a630031ac1",
+  "test_qianwen.py": "dcf2db859a38b71f34ff920e1ec735b87c6a93e3b04f645f0b17b3a429733790",
   "check_recovery.py": "7fb929eabc113b13551764fe57caa4f72e7f37f6cded04a75c590fe54e1a3d2d",
   "启用自动启动.command": "3475ec88b5c035f49adc0a13b3a14a09255ca19aa600a750051f6a8f1d8a07b6",
   "test_app.py": "602564153f61b95bf960f153ed5357076f1f07e1b2caac408d811e2b6b114e92"

@@ -71,4 +71,35 @@ class RecoveryTests(unittest.TestCase):
             expect.return_value.to_have_count.assert_called_once_with(5,timeout=30000)
         checks.count.assert_not_called()
 
+class UploadConfirmationTests(unittest.TestCase):
+    def page(self):
+        from unittest.mock import MagicMock
+        page=MagicMock()
+        page.get_by_role.return_value.filter.return_value.all.return_value=[]
+        page.get_by_role.return_value.all.return_value=[]
+        page.locator.return_value.inner_text.return_value='最近记录'
+        return page
+
+    def test_submission_requires_visible_record(self):
+        import qianwen_browser as browser
+        page=self.page();meta={'qianwen_submission_attempted':True}
+        with tempfile.TemporaryDirectory() as tmp:
+            browser.confirm_submission(page,'test-task',Path(tmp),meta,lambda *args:None)
+        page.get_by_text.return_value.filter.return_value.first.wait_for.assert_called_once_with(timeout=10000)
+        self.assertTrue(meta['qianwen_upload_confirmed'])
+        self.assertEqual(meta['state'],'cloud_transcribing')
+
+    def test_absent_record_does_not_claim_submission_success(self):
+        from unittest.mock import patch
+        from playwright.sync_api import TimeoutError
+        import qianwen_browser as browser
+        page=self.page();page.get_by_text.return_value.filter.return_value.first.wait_for.side_effect=TimeoutError('absent')
+        meta={'qianwen_submission_attempted':True}
+        with tempfile.TemporaryDirectory() as tmp,patch.object(browser.time,'monotonic',side_effect=[0,0,130]):
+            with self.assertRaisesRegex(RuntimeError,'未出现本次上传记录'):
+                browser.confirm_submission(page,'test-task',Path(tmp),meta,lambda *args:None)
+        self.assertFalse(meta.get('qianwen_upload_confirmed',False))
+        self.assertEqual(meta['state'],'cloud_confirming_upload')
+        page.screenshot.assert_called_once()
+
 if __name__=='__main__':unittest.main()

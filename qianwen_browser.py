@@ -110,6 +110,24 @@ def export_panel(page,job):
     return panel,checks
 
 
+def confirm_submission(page,title,job,meta,save,timeout=120000):
+    from playwright.sync_api import TimeoutError as BrowserTimeout
+    meta['state']='cloud_confirming_upload';save(job/'job.json',meta)
+    deadline=time.monotonic()+timeout/1000
+    while time.monotonic()<deadline:
+        require_login_if_visible(page)
+        try:
+            page.get_by_text(title,exact=True).filter(visible=True).first.wait_for(timeout=10000)
+            meta.update(qianwen_submitted=True,qianwen_upload_confirmed=True,state='cloud_transcribing')
+            save(job/'job.json',meta)
+            return
+        except BrowserTimeout:
+            page.screenshot(path=str(job/'browser-diagnostic.png'),full_page=True)
+            (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
+            meta['last_browser_check']=time.time();save(job/'job.json',meta)
+    raise RuntimeError('千问页面未出现本次上传记录，尚未确认上传成功。已保留音频，请诊断后重试；不会重复自动上传。')
+
+
 def export_audio(audio, job, meta, save):
     from playwright.sync_api import sync_playwright
     from reader import ffmpeg, filename
@@ -137,16 +155,18 @@ def export_audio(audio, job, meta, save):
                 page.get_by_text('多人讨论', exact=True).click()
                 if not page.get_by_text('不翻译', exact=True).is_visible():
                     raise RuntimeError('未确认不翻译设置，停止上传')
-                if not meta.get('qianwen_submitted'):
+                if not meta.get('qianwen_submitted') and not meta.get('qianwen_submission_attempted'):
                     meta['state']='cloud_uploading';save(job/'job.json',meta)
                     with page.expect_file_chooser() as chooser:
                         page.get_by_role('button', name=re.compile('点击或将')).click()
                     chooser.value.set_files(str(upload))
+                    from playwright.sync_api import expect
+                    expect(page.get_by_role('button',name='确 认',exact=True)).to_be_enabled(timeout=120000)
+                    meta['qianwen_submission_attempted']=True;save(job/'job.json',meta)
                     page.get_by_role('button', name='确 认', exact=True).click()
                     require_login_if_visible(page)
-                    meta['qianwen_submitted'] = True; save(job/'job.json', meta)
-                meta['state'] = 'cloud_transcribing'; save(job/'job.json', meta)
                 title = upload.stem
+                confirm_submission(page,title,job,meta,save)
                 deadline = time.monotonic() + 6 * 3600
                 while time.monotonic() < deadline:
                     require_login_if_visible(page)
@@ -158,6 +178,9 @@ def export_audio(audio, job, meta, save):
                             meta['qianwen_url']=page.url;save(job/'job.json',meta)
                         page.get_by_role('button', name='导出', exact=True).wait_for(timeout=10000)
                     except BrowserTimeout:
+                        page.screenshot(path=str(job/'browser-diagnostic.png'),full_page=True)
+                        (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
+                        meta['last_browser_check']=time.time();save(job/'job.json',meta)
                         time.sleep(5)
                         continue
                     meta['qianwen_url'] = page.url; save(job/'job.json', meta)
