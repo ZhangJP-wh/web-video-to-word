@@ -14,10 +14,11 @@ folder = ROOT / ".venv"
 if not folder.exists():
     subprocess.run([sys.executable, "-m", "venv", str(folder)], check=True)
 python = str(folder / "bin/python")
+os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(ROOT / "work/browser-bin")
 subprocess.run([python, "-m", "pip", "install", "--upgrade", "pip"], check=True)
 subprocess.run([python, "-m", "pip", "install", "-r", "requirements.txt"], check=True)
 subprocess.run([python, "-m", "pip", "check"], check=True)
 subprocess.run([python, "-m", "unittest", "test_reader", "test_app", "-q"], check=True)
-print("正在下载 Qwen3-ASR-1.7B 模型（约 4.4GB），可以等待，不要关闭窗口。", flush=True)
-subprocess.run([python, "prefetch_model.py"], check=True)
+print("正在安装千问后台浏览器，可以等待，不要关闭窗口。", flush=True)
+subprocess.run([python, "-m", "playwright", "install", "chromium"], check=True)
 print("安装完成。请双击：启动工具.command。", flush=True)

@@ -30,9 +30,9 @@ def document_path(ident):
     meta = json.loads((job / 'job.json').read_text())
     path = Path(meta.get('document', '/nonexistent')).resolve()
     migrated = OUTPUT / path.name
-    if path.parent == OUTPUT.parent / '网页视频转语音文稿' and migrated.is_file():
+    if path.parent in (OUTPUT.parent / '网页视频转语音文稿', OUTPUT.parent / '网页视频转语音识别文字稿') and migrated.is_file():
         path = migrated.resolve()
-    if not any(root.resolve() in path.parents for root in (OUTPUT, LEGACY_OUTPUT, ROOT / 'outputs', OUTPUT.parent / '网页视频转语音文稿')) or not path.is_file():
+    if not any(root.resolve() in path.parents for root in (OUTPUT, LEGACY_OUTPUT, ROOT / 'outputs', OUTPUT.parent / '网页视频转语音文稿', OUTPUT.parent / '网页视频转语音识别文字稿')) or not path.is_file():
         raise ValueError('文档不存在')
     return path
 
@@ -145,7 +145,7 @@ def worker():
                 if (ident,generation) in cancelled or not folder.exists() or (folder/'.deleting').exists():continue
                 log=(folder/'run.log').open('ab')
                 process=subprocess.Popen([str(ROOT/'.venv/bin/python'),str(ROOT/'reader.py'),
-                     'prepare',url,'--engine',json.loads((folder/'job.json').read_text()).get('engine','local')],
+                     'prepare',url,'--engine',json.loads((folder/'job.json').read_text()).get('engine','qianwen')],
                      stdout=log,stderr=log,start_new_session=True)
                 active_readers[ident]=(process,generation)
             result=process.wait();log.close()
@@ -199,8 +199,8 @@ def open_login():
     return {'ok':True,'message':'正在打开千问登录窗口；登录完成后关闭该窗口即可。'}
 
 
-def enqueue(url, engine="local"):
-    if engine not in ("local", "qianwen"):
+def enqueue(url, engine="qianwen"):
+    if engine != "qianwen":
         raise ValueError("不支持的语音识别方式")
     if urlparse(url).scheme not in ('http', 'https') or not urlparse(url).hostname:
         raise ValueError('请输入完整的 HTTP/HTTPS 视频页面链接')
@@ -253,7 +253,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == '/':
             return self.reply(200, (ROOT / 'index.html').read_bytes(), 'text/html; charset=utf-8')
         if self.path == '/health':
-            return self.reply(200, {'ok': True, 'project': str(ROOT), 'pid': os.getpid(), 'engines': ['local', 'qianwen'], 'task_controls': True})
+            return self.reply(200, {'ok': True, 'project': str(ROOT), 'pid': os.getpid(), 'engines': ['qianwen'], 'task_controls': True})
         if self.path == '/qianwen/status':
             return self.reply(200, login_status())
         if self.path == '/jobs':
@@ -285,7 +285,7 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError('提交内容为空或过大')
             data = json.loads(self.rfile.read(length))
             if self.path == '/jobs':
-                return self.reply(200, {'id': enqueue(data['url'].strip(), data.get('engine', 'local'))})
+                return self.reply(200, {'id': enqueue(data['url'].strip(), 'qianwen')})
             if self.path == '/qianwen/login':
                 return self.reply(200, open_login())
             deletion=re.fullmatch(r'/delete/([0-9a-f]{12})',self.path)
@@ -304,5 +304,5 @@ if __name__ == '__main__':
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     resume_jobs()
     threading.Thread(target=worker, daemon=True).start()
-    print(f'网页视频转语音识别文字稿：http://{HOST}:{PORT}', flush=True)
+    print(f'网页视频转语音识别文字稿（由千问提供支持）：http://{HOST}:{PORT}', flush=True)
     server.serve_forever()

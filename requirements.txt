@@ -1,14 +1,6 @@
 yt-dlp[default]
 python-docx
 imageio-ffmpeg
-qwen-asr==0.0.6
-av>=11,<17
-
-resemblyzer==0.1.4
 send2trash
-scikit-learn
 ds-store
-setuptools<81
-
-transformers==4.57.6
-torch>=2.6,<3
+playwright

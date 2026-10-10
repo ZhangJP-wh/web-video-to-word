@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Background download, local speech recognition and verified Word export."""
+"""Background download, Qianwen cloud speech recognition and verified Word export."""
 import argparse
 import hashlib
 import json
@@ -15,7 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 WORK = ROOT / 'work'
 LEGACY_OUTPUT = Path.home() / 'Downloads' / '音视频文稿'
-OUTPUT = Path.home() / 'Downloads' / '网页视频转语音识别文字稿'
+OUTPUT = Path.home() / 'Downloads' / '网页视频转语音识别文字稿（由千问提供支持）'
 NOTICE = '本文稿内容为语音模型识别结果，需要注意：可能有错别字和识别不准确之处。'
 
 
@@ -63,125 +63,6 @@ def make_blocks(segments, limit=2200):
             for i, seg in enumerate(segments) if seg.get('text', '').strip()]
 
 
-def speaker_turns(wav, job):
-    """Local voice embeddings + conservative clustering; labels are estimates, not identities."""
-    import numpy as np
-    import torch
-    from resemblyzer import VoiceEncoder
-    from sklearn.cluster import AgglomerativeClustering
-    torch.set_num_threads(4)
-    import webrtcvad
-    detector = webrtcvad.Vad(2)
-    encoder = VoiceEncoder(device='cpu', verbose=False)
-    vectors, intervals = [], []
-    with wave.open(str(wav)) as source:
-        rate, frames = source.getframerate(), source.getnframes()
-        if rate != 16000:
-            raise ValueError('声纹区分需要 16kHz 音轨')
-        for start in range(0, frames, rate):
-            source.setpos(start)
-            pcm = source.readframes(2 * rate)
-            piece = np.frombuffer(pcm, dtype='<i2').astype(np.float32) / 32768
-            speech = [detector.is_speech(pcm[i:i+960], rate) for i in range(0, len(pcm)-959, 960)]
-            if len(piece) < rate * .5 or not speech or sum(speech) / len(speech) < .25:
-                continue
-            vectors.append(encoder.embed_utterance(piece))
-            intervals.append((start / rate, (start + len(piece)) / rate))
-    if not vectors:
-        return [{'start': 0, 'end': frames / rate, 'speaker': '发言人未确定'}]
-    embeddings = np.array(vectors)
-    # Bound clustering RAM on many-hour recordings; classify the other windows by reference similarity.
-    step = max(1, int(np.ceil(len(vectors) / 3000)))
-    references = embeddings[::step]
-    labels = ([0] if len(references) == 1 else AgglomerativeClustering(
-        n_clusters=None, distance_threshold=.35, metric='cosine', linkage='average').fit_predict(references))
-    if step > 1:
-        centers = np.array([references[np.asarray(labels) == label].mean(axis=0) for label in sorted(set(labels))])
-        centers /= np.maximum(np.linalg.norm(centers, axis=1, keepdims=True), 1e-8)
-        labels = embeddings @ centers.T
-        labels = labels.argmax(axis=1)
-    names, turns = {}, []
-    for (start, end), label in zip(intervals, labels):
-        if int(label) not in names:
-            names[int(label)] = f'发言人 {len(names) + 1}'
-        speaker = names[int(label)]
-        if turns and turns[-1]['speaker'] == speaker and start - turns[-1]['end'] < 2:
-            turns[-1]['end'] = end
-        else:
-            if turns and start < turns[-1]['end']:
-                boundary = (start + turns[-1]['end']) / 2
-                turns[-1]['end'] = boundary
-                start = boundary
-            turns.append({'start': start, 'end': end, 'speaker': speaker})
-    return turns
-
-
-def transcribe_qwen(wav, job, meta, model_name):
-    import numpy as np
-    import torch
-    from qwen_asr import Qwen3ASRModel
-    from qwen_asr.inference.utils import split_audio_into_chunks
-    from huggingface_hub import snapshot_download
-    torch.set_num_threads(4)
-    meta['state'] = 'diarizing'
-    save_json(job / 'job.json', meta)
-    turn_path = job / 'speaker-turns.json'
-    if not turn_path.exists():
-        save_json(turn_path, speaker_turns(wav, job))
-    turns = json.loads(turn_path.read_text())
-    meta['state'] = 'transcribing'
-    save_json(job / 'job.json', meta)
-    model_dir = snapshot_download(model_name, cache_dir=str(WORK / 'model-cache'),
-                                  allow_patterns=['*.json', '*.safetensors', '*.txt', '*.model'])
-    model = Qwen3ASRModel.from_pretrained(
-        model_dir, device_map="cpu", dtype=torch.bfloat16,
-        max_inference_batch_size=1, max_new_tokens=4096)
-    checkpoint_dir = job / 'checkpoints-Qwen3-ASR-1.7B-speakers'
-    checkpoint_dir.mkdir(exist_ok=True)
-    items, language = [], None
-    with wave.open(str(wav)) as audio:
-        rate, frames = audio.getframerate(), audio.getnframes()
-        # The SDK splits long inputs at silence; outer chunks bound RAM and enable resume.
-        chunk_frames = rate * 300
-        for index, start in enumerate(range(0, frames, chunk_frames)):
-            checkpoint = checkpoint_dir / f'{index:05}.json'
-            if checkpoint.exists():
-                saved = json.loads(checkpoint.read_text())
-            else:
-                audio.setpos(start)
-                samples = np.frombuffer(audio.readframes(chunk_frames), dtype='<i2').astype(np.float32) / 32768
-                current, detected_language = [], None
-                # Prefer quiet boundaries and keep each inference small enough for this Mac.
-                pieces = []
-                chunk_start, chunk_end = start / rate, (start + len(samples)) / rate
-                for turn in turns:
-                    left, right = max(chunk_start, turn['start']), min(chunk_end, turn['end'])
-                    if right <= left:
-                        continue
-                    turn_audio = samples[round((left-chunk_start)*rate):round((right-chunk_start)*rate)]
-                    for piece, offset in split_audio_into_chunks(turn_audio, rate, max_chunk_sec=30):
-                        pieces.append((piece, left-chunk_start+offset, turn['speaker']))
-                for piece, offset, speaker in pieces:
-                    results = model.transcribe(audio=(piece, rate), language=None)
-                    current.append({'start': start / rate + offset,
-                                    'end': start / rate + offset + len(piece) / rate,
-                                    'text': results[0].text.strip(), 'speaker': speaker})
-                    detected_language = detected_language or results[0].language
-                    meta['transcribed_seconds'] = current[-1]['end']
-                    save_json(job / 'job.json', meta)
-                saved = {'segments': current, 'language': detected_language}
-                save_json(checkpoint, saved)
-            items.extend(saved['segments'])
-            language = language or saved['language']
-            meta['transcribed_seconds'] = min(start + chunk_frames, frames) / rate
-            save_json(job / 'job.json', meta)
-            print(f'转写进度 {stamp(meta["transcribed_seconds"])} / {stamp(frames / rate)}', flush=True)
-    return {'text': ' '.join(s['text'] for s in items), 'segments': items,
-            'language': language, 'duration': frames / rate, 'model': model_name,
-            'timestamp_precision': '音频片段起止范围，非逐字对齐',
-            'speaker_method': '本地声纹聚类（估计）；发言人编号和切换位置为估计，重叠发言可能无法区分'}
-
-
 def prepare(args):
     from yt_dlp import YoutubeDL
     from urllib.parse import urlparse
@@ -220,8 +101,7 @@ def prepare(args):
                        'outtmpl': str(media_folder / '%(title).60s.%(ext)s'),
                        'merge_output_format': 'mkv', 'retries': 5,
                        'socket_timeout': 30, 'overwrites': False}
-            import shutil
-            node = Path(shutil.which('node') or '/nonexistent')
+            node = Path(__import__('shutil').which('node') or 'node')
             if node.exists():
                 options['js_runtimes'] = {'node': {'path': str(node)}}
             if args.cookies_browser:
@@ -260,19 +140,14 @@ def prepare(args):
             if meta.get('duration') and abs(duration - meta['duration']) > max(5, duration * .01):
                 raise ValueError('下载音轨时长与网页时长不符，需要检查')
             meta['state'] = 'transcribing'
-            meta['model'] = args.model
+            meta['model'] = 'qianwen-web'
             save_json(job / 'job.json', meta)
-            os.environ['HF_HOME'] = str(WORK / 'model-cache')
             os.environ.setdefault('SSL_CERT_FILE', '/etc/ssl/cert.pem')
             raw_path = job / 'raw-transcript.json'
             raw = json.loads(raw_path.read_text()) if raw_path.exists() else {}
-            wanted_model = 'qianwen-web' if getattr(args, 'engine', 'local') == 'qianwen' else args.model
-            if raw.get('model') != wanted_model:
-                if wanted_model == 'qianwen-web':
-                    from qianwen_browser import export_audio
-                    raw = export_audio(wav, job, meta, save_json)
-                else:
-                    raw = transcribe_qwen(wav, job, meta, args.model)
+            if raw.get('model') != 'qianwen-web':
+                from qianwen_browser import export_audio
+                raw = export_audio(wav, job, meta, save_json)
                 save_json(raw_path, raw)
             build_document(job, raw)
             print(f'Word 已生成：{job}', flush=True)
@@ -438,9 +313,8 @@ def main():
     sub = parser.add_subparsers(dest='command', required=True)
     prep = sub.add_parser('prepare')
     prep.add_argument('url')
-    prep.add_argument('--engine', choices=['local', 'qianwen'], default='local')
+    prep.add_argument('--engine', choices=['qianwen'], default='qianwen')
     prep.add_argument('--cookies-browser', choices=['chrome', 'safari', 'firefox', 'edge'])
-    prep.add_argument('--model', choices=['Qwen/Qwen3-ASR-1.7B'], default='Qwen/Qwen3-ASR-1.7B')
     export = sub.add_parser('export', help='从已有识别结果生成 Word')
     export.add_argument('job')
     args = parser.parse_args()

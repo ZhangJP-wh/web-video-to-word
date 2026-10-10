@@ -9,8 +9,6 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from docx import Document
 import reader
-import numpy
-import torch
 
 
 def reader_audio_duration(wav):
@@ -30,8 +28,6 @@ class PipelineTests(unittest.TestCase):
             p.start()
             self.addCleanup(p.stop)
         self.addCleanup(self.temp.cleanup)
-        p = patch.object(reader, 'speaker_turns', side_effect=lambda wav, job: [{'start': 0, 'end': reader_audio_duration(wav), 'speaker': '发言人 1'}])
-        p.start(); self.addCleanup(p.stop)
         self.trash = Path(self.temp.name) / 'trash'; self.trash.mkdir()
         p = patch('send2trash.send2trash', side_effect=lambda name: Path(name).rename(self.trash / Path(name).name))
         self.trash_mock = p.start(); self.addCleanup(p.stop)
@@ -49,17 +45,11 @@ class PipelineTests(unittest.TestCase):
         reader.save_json(job / 'job.json', meta)
         return job, meta, audio
 
-    def qwen_mock(self):
-        factory = MagicMock()
-        factory.return_value.transcribe.side_effect = lambda **kw: [SimpleNamespace(text='完整识别文字 80%。', language='Chinese')]
-        return factory, {'qwen_asr': SimpleNamespace(Qwen3ASRModel=SimpleNamespace(from_pretrained=factory)),
-            'qwen_asr.inference.utils': SimpleNamespace(split_audio_into_chunks=lambda samples, rate, **kw: [(samples, 0)])}
-
     def test_automatic_word_generation_and_cleanup(self):
         job, meta, audio = self.fixture()
-        factory, modules = self.qwen_mock()
-        with patch.dict('sys.modules', modules), patch('huggingface_hub.snapshot_download', return_value='test-model'), patch.object(reader, 'ffmpeg', return_value='/unused'):
-            reader.prepare(argparse.Namespace(url=meta['url'], cookies_browser=None, model='Qwen/Qwen3-ASR-1.7B'))
+        raw={'model':'qianwen-web','segments':[{'start':0,'end':1,'speaker':'发言人 1','text':'完整识别文字 80%。'}]}
+        with patch('qianwen_browser.export_audio',return_value=raw), patch.object(reader,'ffmpeg',return_value='/unused'):
+            reader.prepare(argparse.Namespace(url=meta['url'],cookies_browser=None,engine='qianwen'))
         saved = json.loads((job / 'job.json').read_text())
         self.assertEqual(saved['state'], 'completed')
         doc = Document(saved['document'])
@@ -79,18 +69,6 @@ class PipelineTests(unittest.TestCase):
         self.assertFalse(list(job.glob('checkpoints-*')))
         self.assertFalse((job / 'ChatGPT校对任务.txt').exists())
         self.assertTrue(saved['temporary_files_removed'])
-
-    def test_interrupted_transcription_checkpoint_resume(self):
-        job, meta, audio = self.fixture(301)
-        factory, modules = self.qwen_mock()
-        with patch.dict('sys.modules', modules), patch('huggingface_hub.snapshot_download', return_value='test-model'):
-            first = reader.transcribe_qwen(audio, job, meta, 'Qwen/Qwen3-ASR-1.7B')
-            self.assertEqual(factory.return_value.transcribe.call_count, 2)
-            factory.return_value.transcribe.reset_mock()
-            second = reader.transcribe_qwen(audio, job, meta, 'Qwen/Qwen3-ASR-1.7B')
-            self.assertEqual(factory.return_value.transcribe.call_count, 0)
-            self.assertEqual(first, second)
-            self.assertEqual(second['segments'][1]['start'], 300)
 
     def test_speaker_changes_keep_separate_timestamps(self):
         job, meta, audio = self.fixture(4)
