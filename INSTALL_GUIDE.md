@@ -180,6 +180,8 @@ B站下载兼容：可选播放接口仅返回访问验证凭据时，保留公�
 
 最新图标原始包：[MacAppIcon.zip](icons/MacAppIcon.zip)，包含 macOS ICNS 与各尺寸 PNG。网页标志高度为标题字号的 2.5 倍（以蓝色图案的可见边缘为准，补偿透明留白与阴影），与标题第一行底部对齐；登录状态和显示任务状态按钮位于第二行。
 
+千问 Word 导出下载会先校验 ZIP 完整性和正文，空文件不算下载成功。下载连接失败或文件不完整时自动重试（最多三次），复用已有云端文稿，不重新上传音频；失败保留本机媒体。
+
 ## 仅收到本文档：完整源码
 
 AI Agent 可按 FILE 标记逐个提取文件，再核对文件校验.json；运行 `bash install.sh`。仅提取这里列出的公开源码，不迁移他人的登录资料。
@@ -1565,30 +1567,46 @@ def require_cloud_available(page):
         raise RuntimeError('千问页面提示：'+'；'.join(messages)+'。本机文件已保留，请处理后重试。')
 
 
+class ExportDownloadError(RuntimeError):
+    pass
+
+
 def save_export_download(download,page,destination):
-    """CDP clients can cancel browser downloads; recover through the same page session."""
-    import base64
+    """Validate every download before committing it; recover canceled/empty CDP exports."""
+    import base64,io
+    from zipfile import ZipFile,BadZipFile
+    partial=destination.with_suffix('.partial.docx')
+    def validate(data):
+        try:
+            with ZipFile(io.BytesIO(data)) as archive:
+                if 'word/document.xml' not in archive.namelist() or archive.testzip():
+                    raise ValueError('缺少正文或文件损坏')
+        except (BadZipFile,ValueError) as error:
+            raise ExportDownloadError('千问Word导出文件为空或不完整，尚未生成文稿；原媒体已保留') from error
     try:
-        download.save_as(str(destination))
-        return
-    except Exception as error:
-        if 'canceled' not in str(error).lower():raise
-    # Use the exact URL emitted by this export, including session-local blob URLs.
-    encoded=page.evaluate("""async url => {
-        const response=await fetch(url,{credentials:'include'});
-        if(!response.ok)throw new Error('Word导出请求失败：HTTP '+response.status);
-        const bytes=new Uint8Array(await response.arrayBuffer());
-        if(bytes.length>50*1024*1024)throw new Error('Word导出文件超过50MB');
-        let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));
-        return btoa(binary);
-    }""",download.url)
-    data=base64.b64decode(encoded,validate=True)
-    if not data.startswith(b'PK'):raise RuntimeError('千问导出未返回有效Word文件，原媒体已保留')
-    from zipfile import ZipFile
-    import io
-    with ZipFile(io.BytesIO(data)) as archive:
-        if 'word/document.xml' not in archive.namelist():raise RuntimeError('千问导出缺少Word正文，原媒体已保留')
-    partial=destination.with_suffix('.partial.docx');partial.write_bytes(data);partial.replace(destination)
+        try:
+            download.save_as(str(partial))
+            data=partial.read_bytes()
+            validate(data)
+        except Exception:
+            # XMLHttpRequest avoids the page's patched fetch implementation.
+            try:
+                encoded=page.evaluate("""url => new Promise((resolve,reject) => {
+                    const xhr=new XMLHttpRequest();xhr.open('GET',url);xhr.responseType='arraybuffer';xhr.timeout=60000;
+                    xhr.onload=()=>{if(xhr.status && (xhr.status<200 || xhr.status>=300)){reject(new Error('HTTP '+xhr.status));return;}
+                        const bytes=new Uint8Array(xhr.response);
+                        if(bytes.length>50*1024*1024){reject(new Error('文件超过50MB'));return;}
+                        let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));resolve(btoa(binary));};
+                    xhr.onerror=()=>reject(new Error('导出下载连接失败'));xhr.ontimeout=()=>reject(new Error('导出下载超时'));xhr.send();
+                })""",download.url)
+                data=base64.b64decode(encoded,validate=True)
+                validate(data)
+            except Exception as error:
+                raise ExportDownloadError('千问文稿导出下载失败，已保留云端记录和本机音频；请稍后重试，无需重新上传') from error
+        partial.write_bytes(data)
+        partial.replace(destination)
+    finally:
+        partial.unlink(missing_ok=True)
 
 class TaskContext:
     def __init__(self,context):
@@ -1658,7 +1676,7 @@ def export_with_retry(audio, job, meta, save):
     for attempt in range(3):
         try:
             return export_audio(audio,job,meta,save)
-        except BrowserTimeout:
+        except (BrowserTimeout, ExportDownloadError):
             if attempt==2:raise
             meta.update(state='retry_waiting',retry_attempt=attempt+1)
             save(job/'job.json',meta)
@@ -2974,6 +2992,20 @@ class ExportTests(unittest.TestCase):
    target=Path(tmp)/'original.docx'
    with self.assertRaises(RuntimeError):save_export_download(download,page,target)
    self.assertFalse(target.exists())
+
+ def test_empty_saved_download_uses_recovery(self):
+  stream=io.BytesIO()
+  with zipfile.ZipFile(stream,'w') as z:z.writestr('word/document.xml','<document/>')
+  download=Mock();download.url='blob:export';download.save_as.side_effect=lambda path:Path(path).write_bytes(b'')
+  page=Mock();page.evaluate.return_value=base64.b64encode(stream.getvalue()).decode()
+  with tempfile.TemporaryDirectory() as tmp:
+   target=Path(tmp)/'original.docx';save_export_download(download,page,target);self.assertEqual(target.read_bytes(),stream.getvalue())
+ def test_network_failure_leaves_no_partial_file(self):
+  download=Mock();download.save_as.side_effect=RuntimeError('canceled');page=Mock();page.evaluate.side_effect=RuntimeError('Failed to fetch')
+  with tempfile.TemporaryDirectory() as tmp:
+   target=Path(tmp)/'original.docx'
+   with self.assertRaisesRegex(RuntimeError,'无需重新上传'):save_export_download(download,page,target)
+   self.assertFalse(target.exists());self.assertFalse(target.with_suffix('.partial.docx').exists())
 ```
 
 ### FILE: test_install.py
@@ -3842,7 +3874,7 @@ exit $result
   "install.py": "8fb062e855fb41616c65923dc4ca43808d4c710fc8919d1cb62c039a1fb2144c",
   "install.sh": "abead2c9d17bc14579905cab745be4220776c7d954a96042028c7b4855164826",
   "launch_service.py": "2cadb70ee153b678af24a6eb9e911d7e6e2ae4906ca8d3115ff8bb723d516dba",
-  "qianwen_browser.py": "7988161230d63faf0a86da6a6b5a2bc10c49a91edb92d7095873bb8a3c3b9cdd",
+  "qianwen_browser.py": "fd2b1abaa5bfcf976950c73b39ea40af78253d407f912d252a265d12d5d84bb3",
   "reader.py": "c5ca5add9980f167b3566ae4fc1f536f4cd6055da666990fe418640572027566",
   "requirements.txt": "ca2ed115c7d5ef1c7d63e54519aa39795e35d48d74ac5e8b7be278ccc8e7f083",
   "runtime_compat.py": "88356cfde1ee32b4a9100f48ee374ed7e5ac0ba558f6a8626dde430c10b1191f",
@@ -3856,7 +3888,7 @@ exit $result
   "test_bilibili_download.py": "7d880288610b8e78afb0927f074275b737b143b5b81750c4caf51d99ebe7dae1",
   "test_browser_service.py": "fa30cf65671ef804c0fee82b0cecced1a3748bbc9f2209cde584ceb8aa49a2c3",
   "test_deletion_queue.py": "172f0a40974d00804f6d7e0d0fbcdf72acc7178c1d301c7cfec678d88985db71",
-  "test_export_download.py": "d7d2c3fd4ac63f3fc513a74ef9a296a707066cb2912c5a97443071dfb2255b01",
+  "test_export_download.py": "fb8ab3834ee3b755a7201375ffb12157e7e8829b89f6bd37a12c03f02e52cd75",
   "test_install.py": "5ecdd4f27fc1761c89a27fd5d623377f05315a318cbb622bbd615686798b4941",
   "test_qianwen.py": "9fb2902cabfbb02f36b5ce3bed5c96205ba05b6b390833cae97e10ecafd78473",
   "test_reader.py": "0320926db03be6d0726c88092cdd5cb7d88b3cc7fcfb9d341bc3e0cf740a6b02",

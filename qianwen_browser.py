@@ -89,30 +89,46 @@ def require_cloud_available(page):
         raise RuntimeError('千问页面提示：'+'；'.join(messages)+'。本机文件已保留，请处理后重试。')
 
 
+class ExportDownloadError(RuntimeError):
+    pass
+
+
 def save_export_download(download,page,destination):
-    """CDP clients can cancel browser downloads; recover through the same page session."""
-    import base64
+    """Validate every download before committing it; recover canceled/empty CDP exports."""
+    import base64,io
+    from zipfile import ZipFile,BadZipFile
+    partial=destination.with_suffix('.partial.docx')
+    def validate(data):
+        try:
+            with ZipFile(io.BytesIO(data)) as archive:
+                if 'word/document.xml' not in archive.namelist() or archive.testzip():
+                    raise ValueError('缺少正文或文件损坏')
+        except (BadZipFile,ValueError) as error:
+            raise ExportDownloadError('千问Word导出文件为空或不完整，尚未生成文稿；原媒体已保留') from error
     try:
-        download.save_as(str(destination))
-        return
-    except Exception as error:
-        if 'canceled' not in str(error).lower():raise
-    # Use the exact URL emitted by this export, including session-local blob URLs.
-    encoded=page.evaluate("""async url => {
-        const response=await fetch(url,{credentials:'include'});
-        if(!response.ok)throw new Error('Word导出请求失败：HTTP '+response.status);
-        const bytes=new Uint8Array(await response.arrayBuffer());
-        if(bytes.length>50*1024*1024)throw new Error('Word导出文件超过50MB');
-        let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));
-        return btoa(binary);
-    }""",download.url)
-    data=base64.b64decode(encoded,validate=True)
-    if not data.startswith(b'PK'):raise RuntimeError('千问导出未返回有效Word文件，原媒体已保留')
-    from zipfile import ZipFile
-    import io
-    with ZipFile(io.BytesIO(data)) as archive:
-        if 'word/document.xml' not in archive.namelist():raise RuntimeError('千问导出缺少Word正文，原媒体已保留')
-    partial=destination.with_suffix('.partial.docx');partial.write_bytes(data);partial.replace(destination)
+        try:
+            download.save_as(str(partial))
+            data=partial.read_bytes()
+            validate(data)
+        except Exception:
+            # XMLHttpRequest avoids the page's patched fetch implementation.
+            try:
+                encoded=page.evaluate("""url => new Promise((resolve,reject) => {
+                    const xhr=new XMLHttpRequest();xhr.open('GET',url);xhr.responseType='arraybuffer';xhr.timeout=60000;
+                    xhr.onload=()=>{if(xhr.status && (xhr.status<200 || xhr.status>=300)){reject(new Error('HTTP '+xhr.status));return;}
+                        const bytes=new Uint8Array(xhr.response);
+                        if(bytes.length>50*1024*1024){reject(new Error('文件超过50MB'));return;}
+                        let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));resolve(btoa(binary));};
+                    xhr.onerror=()=>reject(new Error('导出下载连接失败'));xhr.ontimeout=()=>reject(new Error('导出下载超时'));xhr.send();
+                })""",download.url)
+                data=base64.b64decode(encoded,validate=True)
+                validate(data)
+            except Exception as error:
+                raise ExportDownloadError('千问文稿导出下载失败，已保留云端记录和本机音频；请稍后重试，无需重新上传') from error
+        partial.write_bytes(data)
+        partial.replace(destination)
+    finally:
+        partial.unlink(missing_ok=True)
 
 class TaskContext:
     def __init__(self,context):
@@ -182,7 +198,7 @@ def export_with_retry(audio, job, meta, save):
     for attempt in range(3):
         try:
             return export_audio(audio,job,meta,save)
-        except BrowserTimeout:
+        except (BrowserTimeout, ExportDownloadError):
             if attempt==2:raise
             meta.update(state='retry_waiting',retry_attempt=attempt+1)
             save(job/'job.json',meta)
