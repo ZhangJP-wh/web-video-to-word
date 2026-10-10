@@ -35,6 +35,10 @@
 
 更新时停止服务，备份 work 中的任务记录与浏览器登录资料，替换源码和重新安装 requirements 后启动；不要用别人的登录资料覆盖自己的。朋友电脑不会因 GitHub 更新自动升级。
 
+## 故障恢复加固
+
+页面加载超时会自动重试，最多3次；复用已经提交的千问任务和保存的文稿链接，不重复上传。登录失效立即提示用户，不自动反复尝试登录。导出菜单等待可见及选项完整后才操作。加载异常保留媒体和页面诊断，文稿验证失败不清理源文件。自动恢复不能保证第三方改版、网络中断或服务限额永不影响任务。
+
 ## HTTPS 证书
 
 下载依赖 certifi 的可信证书。已将 certifi 列为必需组件并保留，清理旧模型时不会移除；不关闭 HTTPS 证书校验。若下载出现 CERTIFICATE_VERIFY_FAILED，请在项目中执行 `.venv/bin/python -m pip install -r requirements.txt` 恢复依赖后重试。
@@ -60,7 +64,7 @@
 
 ## 验证说明
 
-本次 19 项测试通过，其中云端识别返回结果在单元测试中模拟；旧本地推理断点测试已移除。此前本机20秒音频的千问后台完整流程约46秒，不能推断长视频速度或识别准确率。未在另一台全新 Mac 完成安装实测。
+本次 24 项测试通过，其中云端识别返回结果在单元测试中模拟；旧本地推理断点测试已移除。此前本机20秒音频的千问后台完整流程约46秒，不能推断长视频速度或识别准确率。未在另一台全新 Mac 完成安装实测。
 
 ## 主要文件
 
@@ -797,6 +801,34 @@ def browser_context(playwright, headed=False):
             except Exception:pass
 
 
+def export_with_retry(audio, job, meta, save):
+    """Retry browser timeouts only; saved submission and document URL prevent reupload."""
+    from playwright.sync_api import TimeoutError as BrowserTimeout
+    for attempt in range(3):
+        try:
+            return export_audio(audio,job,meta,save)
+        except BrowserTimeout:
+            if attempt==2:raise
+            meta.update(state='cloud_transcribing',retry_attempt=attempt+1)
+            save(job/'job.json',meta)
+            time.sleep(5*(attempt+1))
+
+
+def export_panel(page,job):
+    from playwright.sync_api import expect
+    panel=page.get_by_role('tooltip').filter(visible=True).first
+    panel.wait_for(state='visible',timeout=30000)
+    checks=panel.get_by_role('checkbox')
+    try:
+        expect(checks).to_have_count(5,timeout=30000)
+    except AssertionError as error:
+        from playwright.sync_api import TimeoutError
+        page.screenshot(path=str(job/'browser-diagnostic.png'),full_page=True)
+        (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
+        raise TimeoutError('千问导出选项尚未加载完整，已保留任务和媒体') from error
+    return panel,checks
+
+
 def export_audio(audio, job, meta, save):
     from playwright.sync_api import sync_playwright
     from reader import ffmpeg, filename
@@ -835,9 +867,11 @@ def export_audio(audio, job, meta, save):
                 while time.monotonic() < deadline:
                     require_login_if_visible(page)
                     from playwright.sync_api import TimeoutError as BrowserTimeout
-                    if '/efficiency/doc/transcripts/' not in page.url:
-                        page.get_by_text(title, exact=True).filter(visible=True).first.click(timeout=10000)
                     try:
+                        if '/efficiency/doc/transcripts/' not in page.url:
+                            page.get_by_text(title, exact=True).filter(visible=True).first.click(timeout=10000)
+                        if '/efficiency/doc/transcripts/' in page.url:
+                            meta['qianwen_url']=page.url;save(job/'job.json',meta)
                         page.get_by_role('button', name='导出', exact=True).wait_for(timeout=10000)
                     except BrowserTimeout:
                         time.sleep(5)
@@ -850,16 +884,7 @@ def export_audio(audio, job, meta, save):
             page.screenshot(path=str(job/'browser-diagnostic.png'), full_page=True)
             (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
             page.get_by_role('button', name='导出', exact=True).click()
-            panel = page.get_by_role('tooltip').filter(visible=True).first
-            panel.wait_for(state='visible',timeout=15000)
-            checks = panel.get_by_role('checkbox')
-            from playwright.sync_api import expect
-            try:
-                expect(checks).to_have_count(5,timeout=15000)
-            except Exception as error:
-                page.screenshot(path=str(job/'browser-diagnostic.png'),full_page=True)
-                (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
-                raise RuntimeError('千问导出选项未正确加载（实际 '+str(checks.count())+' 项），保留媒体以便重试') from error
+            panel,checks=export_panel(page,job)
             checks.nth(0).check()
             for i in range(1, 5): checks.nth(i).uncheck()
             if not panel.get_by_text('.docx', exact=True).first.is_visible():
@@ -1052,8 +1077,8 @@ def prepare(args):
             raw_path = job / 'raw-transcript.json'
             raw = json.loads(raw_path.read_text()) if raw_path.exists() else {}
             if raw.get('model') != 'qianwen-web':
-                from qianwen_browser import export_audio
-                raw = export_audio(wav, job, meta, save_json)
+                from qianwen_browser import export_with_retry
+                raw = export_with_retry(wav, job, meta, save_json)
                 save_json(raw_path, raw)
             build_document(job, raw)
             print(f'Word 已生成：{job}', flush=True)
@@ -1549,6 +1574,56 @@ class QianwenExportTests(unittest.TestCase):
     def test_rejects_empty_segment(self):
         with self.assertRaises(ValueError):read_export(self.export(['发言人1   00:00']),20)
 
+class RecoveryTests(unittest.TestCase):
+    def test_download_certificate_bundle_loads_trusted_roots(self):
+        import certifi,ssl
+        context=ssl.create_default_context(cafile=certifi.where())
+        self.assertGreater(context.cert_store_stats()['x509_ca'],0)
+        self.assertEqual(context.verify_mode,ssl.CERT_REQUIRED)
+
+    def test_timeout_reuses_saved_cloud_document(self):
+        from unittest.mock import patch
+        from playwright.sync_api import TimeoutError
+        import qianwen_browser as browser
+        meta={};calls=[]
+        def export(audio,job,record,save):
+            calls.append(record.get('qianwen_url'))
+            if len(calls)==1:
+                record.update(qianwen_submitted=True,qianwen_url='https://www.qianwen.com/efficiency/doc/transcripts/test')
+                raise TimeoutError('loading')
+            return {'model':'qianwen-web'}
+        with patch.object(browser,'export_audio',side_effect=export),patch.object(browser.time,'sleep'):
+            result=browser.export_with_retry(None,Path('/tmp/test'),meta,lambda *args:None)
+        self.assertEqual(result['model'],'qianwen-web')
+        self.assertEqual(calls,[None,meta['qianwen_url']])
+
+    def test_login_error_is_not_retried(self):
+        from unittest.mock import patch
+        import qianwen_browser as browser
+        with patch.object(browser,'export_audio',side_effect=browser.LoginRequired('login')) as run:
+            with self.assertRaises(browser.LoginRequired):browser.export_with_retry(None,Path('/tmp/test'),{},lambda *args:None)
+        self.assertEqual(run.call_count,1)
+
+    def test_timeout_retry_is_bounded(self):
+        from unittest.mock import patch
+        from playwright.sync_api import TimeoutError
+        import qianwen_browser as browser
+        with patch.object(browser,'export_audio',side_effect=TimeoutError('loading')) as run,patch.object(browser.time,'sleep'):
+            with self.assertRaises(TimeoutError):browser.export_with_retry(None,Path('/tmp/test'),{},lambda *args:None)
+        self.assertEqual(run.call_count,3)
+
+    def test_export_options_wait_before_selection(self):
+        from unittest.mock import MagicMock,patch
+        import qianwen_browser as browser
+        page=MagicMock();panel=page.get_by_role.return_value.filter.return_value.first
+        checks=panel.get_by_role.return_value
+        with patch('playwright.sync_api.expect') as expect:
+            browser.export_panel(page,Path('/tmp/test'))
+            panel.wait_for.assert_called_once_with(state='visible',timeout=30000)
+            expect.assert_called_once_with(checks)
+            expect.return_value.to_have_count.assert_called_once_with(5,timeout=30000)
+        checks.count.assert_not_called()
+
 if __name__=='__main__':unittest.main()
 
 ```
@@ -1832,7 +1907,7 @@ exit $result
 ```text
 {
   "test_reader.py": "71fc155ea2c8eef538b119ee78a2a63118c02308aadde680f6f483829d036626",
-  "qianwen_browser.py": "6c1b9e88c87c6395a150cb3f6629026e7b7776bf53cd828aee0db44037854c5f",
+  "qianwen_browser.py": "f19cd54031b7d7c3f4dfe4fa13b7b03a11dbe49b859d79f52a3c9570c26f3cc3",
   "测试千问后台流程.command": "365ea7c455b38238341c79e3f2db6531de8053c34a909c4a210a19248a680c8c",
   "smoke_qianwen.py": "5a41ae58b74a8f2edaaadeb36c60235646989c5bdb2aa49e17d72dfd8778f71e",
   "index.html": "05131b2ec6b632fdfcb5da59d1fbd08a08591958b20a491857c6ba61f1ece0f2",
@@ -1843,7 +1918,7 @@ exit $result
   "首次安装.command": "3386934c6c62f0983f9d9ee8541bf0d73a4fa671be319201efa649bf71c28d32",
   "task_controls.py": "a420be2ff8a6b4fc833d126f235e8a249c521e2a8c30435b36ebdf7426579084",
   "test_task_controls.py": "2a0d1da5b7de5a52a5d3c0257dd989341bccf00ba3cda5fd57fe98db25842644",
-  "reader.py": "9ebeb8e8987dbfa5bb8acda6fb4aecfa01fc722f46742d43564be1133006bd68",
+  "reader.py": "8f34a3a569cbaaddbe60e685d5ffba6fbcb115adb25516fdf20a097e9132c0cb",
   "切换千问并清理本地模型.command": "39ae5c718d5854f9fec85e13cd2c6fc683cb3c07844dffdd29697f97cfeeaaf4",
   "smoke_qianwen_runner.py": "10c6047ad2b7ae20cac3945b41f8afdc047975fd2da3ef0dc576f3753a512409",
   "cloud_migration.py": "cc5c02b953f404a280f0230e836ff9a5fe04f3e7002361ef9b8b8cdc244c07a0",
@@ -1852,7 +1927,7 @@ exit $result
   "加载本次更新.command": "ceabb97ebf2b3d7df5568844de02733bc9e09f9c877621985bdaf801a182b978",
   "配置千问登录.command": "3bc9b14516ab4c169b0cd7a9c595778965167f7f7ce533eab5ad7b3abd835fac",
   "install.py": "837ca16dea4cc1b6c258f5effb2eea8953577857a00a4b9b927624aff8a146e8",
-  "test_qianwen.py": "d95d8b70b0948906667d2de5389c00fbef90476554551beee1308e988d5dacc9",
+  "test_qianwen.py": "8c7b820b2a463d3eb009a2a0affa96927a3acca9889ab84c420657a630031ac1",
   "check_recovery.py": "7fb929eabc113b13551764fe57caa4f72e7f37f6cded04a75c590fe54e1a3d2d",
   "启用自动启动.command": "3475ec88b5c035f49adc0a13b3a14a09255ca19aa600a750051f6a8f1d8a07b6",
   "test_app.py": "911650ca1bd12c3e87ce499ed1d6bfea8882d8d04ac9e357bb98c067853befc9"

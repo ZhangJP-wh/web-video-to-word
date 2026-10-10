@@ -82,6 +82,34 @@ def browser_context(playwright, headed=False):
             except Exception:pass
 
 
+def export_with_retry(audio, job, meta, save):
+    """Retry browser timeouts only; saved submission and document URL prevent reupload."""
+    from playwright.sync_api import TimeoutError as BrowserTimeout
+    for attempt in range(3):
+        try:
+            return export_audio(audio,job,meta,save)
+        except BrowserTimeout:
+            if attempt==2:raise
+            meta.update(state='cloud_transcribing',retry_attempt=attempt+1)
+            save(job/'job.json',meta)
+            time.sleep(5*(attempt+1))
+
+
+def export_panel(page,job):
+    from playwright.sync_api import expect
+    panel=page.get_by_role('tooltip').filter(visible=True).first
+    panel.wait_for(state='visible',timeout=30000)
+    checks=panel.get_by_role('checkbox')
+    try:
+        expect(checks).to_have_count(5,timeout=30000)
+    except AssertionError as error:
+        from playwright.sync_api import TimeoutError
+        page.screenshot(path=str(job/'browser-diagnostic.png'),full_page=True)
+        (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
+        raise TimeoutError('千问导出选项尚未加载完整，已保留任务和媒体') from error
+    return panel,checks
+
+
 def export_audio(audio, job, meta, save):
     from playwright.sync_api import sync_playwright
     from reader import ffmpeg, filename
@@ -120,9 +148,11 @@ def export_audio(audio, job, meta, save):
                 while time.monotonic() < deadline:
                     require_login_if_visible(page)
                     from playwright.sync_api import TimeoutError as BrowserTimeout
-                    if '/efficiency/doc/transcripts/' not in page.url:
-                        page.get_by_text(title, exact=True).filter(visible=True).first.click(timeout=10000)
                     try:
+                        if '/efficiency/doc/transcripts/' not in page.url:
+                            page.get_by_text(title, exact=True).filter(visible=True).first.click(timeout=10000)
+                        if '/efficiency/doc/transcripts/' in page.url:
+                            meta['qianwen_url']=page.url;save(job/'job.json',meta)
                         page.get_by_role('button', name='导出', exact=True).wait_for(timeout=10000)
                     except BrowserTimeout:
                         time.sleep(5)
@@ -135,16 +165,7 @@ def export_audio(audio, job, meta, save):
             page.screenshot(path=str(job/'browser-diagnostic.png'), full_page=True)
             (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
             page.get_by_role('button', name='导出', exact=True).click()
-            panel = page.get_by_role('tooltip').filter(visible=True).first
-            panel.wait_for(state='visible',timeout=15000)
-            checks = panel.get_by_role('checkbox')
-            from playwright.sync_api import expect
-            try:
-                expect(checks).to_have_count(5,timeout=15000)
-            except Exception as error:
-                page.screenshot(path=str(job/'browser-diagnostic.png'),full_page=True)
-                (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
-                raise RuntimeError('千问导出选项未正确加载（实际 '+str(checks.count())+' 项），保留媒体以便重试') from error
+            panel,checks=export_panel(page,job)
             checks.nth(0).check()
             for i in range(1, 5): checks.nth(i).uncheck()
             if not panel.get_by_text('.docx', exact=True).first.is_visible():

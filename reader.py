@@ -148,8 +148,8 @@ def prepare(args):
             raw_path = job / 'raw-transcript.json'
             raw = json.loads(raw_path.read_text()) if raw_path.exists() else {}
             if raw.get('model') != 'qianwen-web':
-                from qianwen_browser import export_audio
-                raw = export_audio(wav, job, meta, save_json)
+                from qianwen_browser import export_with_retry
+                raw = export_with_retry(wav, job, meta, save_json)
                 save_json(raw_path, raw)
             build_document(job, raw)
             print(f'Word 已生成：{job}', flush=True)
