@@ -89,6 +89,31 @@ def require_cloud_available(page):
         raise RuntimeError('千问页面提示：'+'；'.join(messages)+'。本机文件已保留，请处理后重试。')
 
 
+def save_export_download(download,page,destination):
+    """CDP clients can cancel browser downloads; recover through the same page session."""
+    import base64
+    try:
+        download.save_as(str(destination))
+        return
+    except Exception as error:
+        if 'canceled' not in str(error).lower():raise
+    # Use the exact URL emitted by this export, including session-local blob URLs.
+    encoded=page.evaluate("""async url => {
+        const response=await fetch(url,{credentials:'include'});
+        if(!response.ok)throw new Error('Word导出请求失败：HTTP '+response.status);
+        const bytes=new Uint8Array(await response.arrayBuffer());
+        if(bytes.length>50*1024*1024)throw new Error('Word导出文件超过50MB');
+        let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));
+        return btoa(binary);
+    }""",download.url)
+    data=base64.b64decode(encoded,validate=True)
+    if not data.startswith(b'PK'):raise RuntimeError('千问导出未返回有效Word文件，原媒体已保留')
+    from zipfile import ZipFile
+    import io
+    with ZipFile(io.BytesIO(data)) as archive:
+        if 'word/document.xml' not in archive.namelist():raise RuntimeError('千问导出缺少Word正文，原媒体已保留')
+    partial=destination.with_suffix('.partial.docx');partial.write_bytes(data);partial.replace(destination)
+
 class TaskContext:
     def __init__(self,context):
         self.page=context.new_page()
@@ -290,7 +315,7 @@ def export_audio(audio, job, meta, save):
             destination = job/'qianwen-original.docx'
             with page.expect_download(timeout=120000) as download:
                 panel.get_by_role('button', name='导出', exact=True).click()
-            download.value.save_as(str(destination))
+            save_export_download(download.value,page,destination)
     raw = read_export(destination, meta['audio_duration'])
     auth_state('valid')
     upload.unlink(missing_ok=True)
