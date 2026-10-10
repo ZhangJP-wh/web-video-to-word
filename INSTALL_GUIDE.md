@@ -864,13 +864,17 @@ def confirm_submission(page,title,job,meta,save,timeout=120000):
     while time.monotonic()<deadline:
         require_login_if_visible(page)
         try:
-            page.get_by_text(title,exact=True).filter(visible=True).first.wait_for(timeout=10000)
+            page.get_by_text(title,exact=True).filter(visible=True).first.wait_for(timeout=1000)
             meta.update(qianwen_submitted=True,qianwen_upload_confirmed=True,state='cloud_transcribing')
             save(job/'job.json',meta)
             return
         except BrowserTimeout:
-            page.screenshot(path=str(job/'browser-diagnostic.png'),full_page=True)
-            (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
+            body=page.locator('body').inner_text()
+            (job/'browser-diagnostic.txt').write_text(body)
+            events=job/'upload-events.txt'
+            previous=events.read_text() if events.exists() else ''
+            if not previous.endswith(body+'\n'):
+                events.write_text((previous+'\n'+str(time.time())+'\n'+body+'\n')[-64000:])
             meta['last_browser_check']=time.time();save(job/'job.json',meta)
     raise RuntimeError('千问页面未出现本次上传记录，尚未确认上传成功。已保留音频，请诊断后重试；不会重复自动上传。')
 
@@ -907,10 +911,14 @@ def export_audio(audio, job, meta, save):
                     with page.expect_file_chooser() as chooser:
                         page.get_by_role('button', name=re.compile('点击或将')).click()
                     chooser.value.set_files(str(upload))
+                    page.screenshot(path=str(job/'upload-selected.png'),full_page=True)
+                    (job/'upload-selected.txt').write_text(page.locator('body').inner_text())
                     from playwright.sync_api import expect
                     expect(page.get_by_role('button',name='确 认',exact=True)).to_be_enabled(timeout=120000)
                     meta['qianwen_submission_attempted']=True;save(job/'job.json',meta)
                     page.get_by_role('button', name='确 认', exact=True).click()
+                    page.screenshot(path=str(job/'upload-confirmed.png'),full_page=True)
+                    (job/'upload-confirmed.txt').write_text(page.locator('body').inner_text())
                     require_login_if_visible(page)
                 title = upload.stem
                 confirm_submission(page,title,job,meta,save)
@@ -1238,7 +1246,7 @@ def clear_intermediate(job, meta):
             shutil.rmtree(checkpoint)
     for name in ('blocks.json', '原始转写.txt', 'ChatGPT校对任务.txt', 'chatgpt-result.json',
                  '网页校对结果.json', 'submitted-result.json', 'result.json', 'speaker-turns.json',
-                 'qianwen-original.docx', 'browser-diagnostic.png', 'browser-diagnostic.txt',
+                 'qianwen-original.docx', 'browser-diagnostic.png', 'browser-diagnostic.txt', 'upload-selected.png', 'upload-selected.txt', 'upload-confirmed.png', 'upload-confirmed.txt', 'upload-events.txt', 'upload-recovery.png', 'upload-recovery.txt',
                  'browser-elements.json', 'browser-rows.json', 'browser-structure.json'):
         (job / name).unlink(missing_ok=True)
     meta['temporary_files_removed'] = True
@@ -1738,7 +1746,7 @@ class UploadConfirmationTests(unittest.TestCase):
         page=self.page();meta={'qianwen_submission_attempted':True}
         with tempfile.TemporaryDirectory() as tmp:
             browser.confirm_submission(page,'test-task',Path(tmp),meta,lambda *args:None)
-        page.get_by_text.return_value.filter.return_value.first.wait_for.assert_called_once_with(timeout=10000)
+        page.get_by_text.return_value.filter.return_value.first.wait_for.assert_called_once_with(timeout=1000)
         self.assertTrue(meta['qianwen_upload_confirmed'])
         self.assertEqual(meta['state'],'cloud_transcribing')
 
@@ -1753,7 +1761,7 @@ class UploadConfirmationTests(unittest.TestCase):
                 browser.confirm_submission(page,'test-task',Path(tmp),meta,lambda *args:None)
         self.assertFalse(meta.get('qianwen_upload_confirmed',False))
         self.assertEqual(meta['state'],'cloud_confirming_upload')
-        page.screenshot.assert_called_once()
+        page.locator.assert_called()
 
 if __name__=='__main__':unittest.main()
 
@@ -2072,7 +2080,7 @@ exit $result
 ```text
 {
   "test_reader.py": "44db5108039e4ddc37b71a1aa75a52a7d9259a8787aaa0d14fb8d3f52b517bdb",
-  "qianwen_browser.py": "08f4b1bebdc4864c6c7a10a4ade69133aeb6cff622bdb8548777ab5902113990",
+  "qianwen_browser.py": "a74a740d10aab38cb06d437790da78ea05967a12c43ac6f2d06177cc95e8fbf5",
   "测试千问后台流程.command": "365ea7c455b38238341c79e3f2db6531de8053c34a909c4a210a19248a680c8c",
   "smoke_qianwen.py": "5a41ae58b74a8f2edaaadeb36c60235646989c5bdb2aa49e17d72dfd8778f71e",
   "index.html": "c08bc216839f6f4e340af83ff3aa4e3969d033658155e192d3e1b5b05c3aa354",
@@ -2083,7 +2091,7 @@ exit $result
   "首次安装.command": "3386934c6c62f0983f9d9ee8541bf0d73a4fa671be319201efa649bf71c28d32",
   "task_controls.py": "a420be2ff8a6b4fc833d126f235e8a249c521e2a8c30435b36ebdf7426579084",
   "test_task_controls.py": "2a0d1da5b7de5a52a5d3c0257dd989341bccf00ba3cda5fd57fe98db25842644",
-  "reader.py": "8e245f7ee3a2bc35c89c8f91f7bc08c554e2901e56d179ff84b893cc54864f63",
+  "reader.py": "d4d41b22f5e93ebb1a1f95c4173fa2d0588177d88585310667cb1caafdf3639c",
   "切换千问并清理本地模型.command": "39ae5c718d5854f9fec85e13cd2c6fc683cb3c07844dffdd29697f97cfeeaaf4",
   "smoke_qianwen_runner.py": "10c6047ad2b7ae20cac3945b41f8afdc047975fd2da3ef0dc576f3753a512409",
   "cloud_migration.py": "cc5c02b953f404a280f0230e836ff9a5fe04f3e7002361ef9b8b8cdc244c07a0",
@@ -2092,7 +2100,7 @@ exit $result
   "加载本次更新.command": "ceabb97ebf2b3d7df5568844de02733bc9e09f9c877621985bdaf801a182b978",
   "配置千问登录.command": "3bc9b14516ab4c169b0cd7a9c595778965167f7f7ce533eab5ad7b3abd835fac",
   "install.py": "837ca16dea4cc1b6c258f5effb2eea8953577857a00a4b9b927624aff8a146e8",
-  "test_qianwen.py": "dcf2db859a38b71f34ff920e1ec735b87c6a93e3b04f645f0b17b3a429733790",
+  "test_qianwen.py": "0b24553adaa36ffe63477fbc4eaeeafbaa10d2f50b69cc5c2279b3a2bf469fbe",
   "check_recovery.py": "7fb929eabc113b13551764fe57caa4f72e7f37f6cded04a75c590fe54e1a3d2d",
   "启用自动启动.command": "3475ec88b5c035f49adc0a13b3a14a09255ca19aa600a750051f6a8f1d8a07b6",
   "test_app.py": "602564153f61b95bf960f153ed5357076f1f07e1b2caac408d811e2b6b114e92"

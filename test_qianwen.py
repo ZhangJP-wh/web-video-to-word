@@ -85,7 +85,7 @@ class UploadConfirmationTests(unittest.TestCase):
         page=self.page();meta={'qianwen_submission_attempted':True}
         with tempfile.TemporaryDirectory() as tmp:
             browser.confirm_submission(page,'test-task',Path(tmp),meta,lambda *args:None)
-        page.get_by_text.return_value.filter.return_value.first.wait_for.assert_called_once_with(timeout=10000)
+        page.get_by_text.return_value.filter.return_value.first.wait_for.assert_called_once_with(timeout=1000)
         self.assertTrue(meta['qianwen_upload_confirmed'])
         self.assertEqual(meta['state'],'cloud_transcribing')
 
@@ -100,6 +100,6 @@ class UploadConfirmationTests(unittest.TestCase):
                 browser.confirm_submission(page,'test-task',Path(tmp),meta,lambda *args:None)
         self.assertFalse(meta.get('qianwen_upload_confirmed',False))
         self.assertEqual(meta['state'],'cloud_confirming_upload')
-        page.screenshot.assert_called_once()
+        page.locator.assert_called()
 
 if __name__=='__main__':unittest.main()

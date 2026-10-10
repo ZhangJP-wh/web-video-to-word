@@ -254,7 +254,7 @@ def clear_intermediate(job, meta):
             shutil.rmtree(checkpoint)
     for name in ('blocks.json', '原始转写.txt', 'ChatGPT校对任务.txt', 'chatgpt-result.json',
                  '网页校对结果.json', 'submitted-result.json', 'result.json', 'speaker-turns.json',
-                 'qianwen-original.docx', 'browser-diagnostic.png', 'browser-diagnostic.txt',
+                 'qianwen-original.docx', 'browser-diagnostic.png', 'browser-diagnostic.txt', 'upload-selected.png', 'upload-selected.txt', 'upload-confirmed.png', 'upload-confirmed.txt', 'upload-events.txt', 'upload-recovery.png', 'upload-recovery.txt',
                  'browser-elements.json', 'browser-rows.json', 'browser-structure.json'):
         (job / name).unlink(missing_ok=True)
     meta['temporary_files_removed'] = True

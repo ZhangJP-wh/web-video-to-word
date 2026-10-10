@@ -117,13 +117,17 @@ def confirm_submission(page,title,job,meta,save,timeout=120000):
     while time.monotonic()<deadline:
         require_login_if_visible(page)
         try:
-            page.get_by_text(title,exact=True).filter(visible=True).first.wait_for(timeout=10000)
+            page.get_by_text(title,exact=True).filter(visible=True).first.wait_for(timeout=1000)
             meta.update(qianwen_submitted=True,qianwen_upload_confirmed=True,state='cloud_transcribing')
             save(job/'job.json',meta)
             return
         except BrowserTimeout:
-            page.screenshot(path=str(job/'browser-diagnostic.png'),full_page=True)
-            (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
+            body=page.locator('body').inner_text()
+            (job/'browser-diagnostic.txt').write_text(body)
+            events=job/'upload-events.txt'
+            previous=events.read_text() if events.exists() else ''
+            if not previous.endswith(body+'\n'):
+                events.write_text((previous+'\n'+str(time.time())+'\n'+body+'\n')[-64000:])
             meta['last_browser_check']=time.time();save(job/'job.json',meta)
     raise RuntimeError('千问页面未出现本次上传记录，尚未确认上传成功。已保留音频，请诊断后重试；不会重复自动上传。')
 
@@ -160,10 +164,14 @@ def export_audio(audio, job, meta, save):
                     with page.expect_file_chooser() as chooser:
                         page.get_by_role('button', name=re.compile('点击或将')).click()
                     chooser.value.set_files(str(upload))
+                    page.screenshot(path=str(job/'upload-selected.png'),full_page=True)
+                    (job/'upload-selected.txt').write_text(page.locator('body').inner_text())
                     from playwright.sync_api import expect
                     expect(page.get_by_role('button',name='确 认',exact=True)).to_be_enabled(timeout=120000)
                     meta['qianwen_submission_attempted']=True;save(job/'job.json',meta)
                     page.get_by_role('button', name='确 认', exact=True).click()
+                    page.screenshot(path=str(job/'upload-confirmed.png'),full_page=True)
+                    (job/'upload-confirmed.txt').write_text(page.locator('body').inner_text())
                     require_login_if_visible(page)
                 title = upload.stem
                 confirm_submission(page,title,job,meta,save)
