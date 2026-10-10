@@ -27,7 +27,7 @@ class CompatibilityTests(unittest.TestCase):
                 self.assertEqual(result.returncode,0,result.stderr)
 
     def test_windows_environment(self):
-        with patch.object(install.platform,'system',return_value='Windows'), patch.object(install.platform,'machine',return_value='AMD64'), patch.object(install.sys,'version_info',(3,12)), patch.object(install.sys,'getwindowsversion',create=True,return_value=MagicMock(build=19045)), patch.object(install.shutil,'which',return_value='node.exe'), patch.object(install.subprocess,'check_output',return_value=json.dumps({'version':'24.0.0','arch':'x64'})):
+        with patch.object(install.platform,'system',return_value='Windows'), patch.object(install.platform,'machine',return_value='AMD64'), patch.object(install.sys,'version_info',(3,12)), patch.object(install.sys,'getwindowsversion',create=True,return_value=MagicMock(build=22631,product_type=1)), patch.object(install.shutil,'which',return_value='node.exe'), patch.object(install.subprocess,'check_output',return_value=json.dumps({'version':'24.0.0','arch':'x64'})):
             install.check_environment()
 
     def test_windows_service_redirector_identity(self):
@@ -43,6 +43,12 @@ class CompatibilityTests(unittest.TestCase):
             process.cmdline.return_value = ['python.exe', str(install.ROOT/'app.py')]
             process.parents.return_value = [MagicMock(pid=999)]
             self.assertFalse(install.started_service_matches(456,123))
+
+    def test_windows_10_rejected_before_dependency_install(self):
+        with patch.object(install.platform,'system',return_value='Windows'), patch.object(install.platform,'machine',return_value='AMD64'), patch.object(install.sys,'getwindowsversion',create=True,return_value=MagicMock(build=19045,product_type=1)), patch.object(install,'run') as run:
+            with self.assertRaisesRegex(RuntimeError,'Windows 11'):
+                install.check_environment()
+            run.assert_not_called()
 
     def test_windows_arm_rejected(self):
         with patch.object(install.platform,'system',return_value='Windows'), patch.object(install.platform,'machine',return_value='ARM64'):

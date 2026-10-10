@@ -5,7 +5,7 @@
   "markdown_source_roundtrip": true,
   "word_full_source_roundtrip": true,
   "unit_tests": {
-    "passed": 67,
+    "passed": 68,
     "environment": "existing Apple Silicon macOS, Python 3.12; ASR mocked"
   },
   "pip_check": true,
@@ -36,8 +36,20 @@
   ],
   "windows": {
     "implemented": true,
-    "github_actions": "66 tests and Chromium passed; correcting Windows venv redirector PID verification; full PowerShell rerun pending",
+    "github_actions": {
+      "status": "success",
+      "run_id": 37683739032,
+      "url": "https://github.com/ZhangJP-wh/web-video-to-word/actions/runs/37683739032",
+      "runtime_commit": "dd9977f9c8fcf823193c1428e28f40485fbe20b6",
+      "tests_passed": 67,
+      "powershell_full_entrypoint": true,
+      "chromium_download_and_launch": true,
+      "service_health_and_repeated_start": true,
+      "python_node_preinstalled": true,
+      "runner": "GitHub windows-latest x64"
+    },
     "fresh_physical_pc_tested": false,
-    "winget_install_branch_tested": false
+    "winget_install_branch_tested": false,
+    "supported_desktop": "Windows 11 x64"
   }
 }

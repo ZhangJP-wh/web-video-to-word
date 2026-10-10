@@ -25,11 +25,13 @@ def run(args, **kwargs):
 def check_environment():
     system, machine = platform.system(), platform.machine().lower()
     if not ((system == 'Darwin' and machine == 'arm64') or (system == 'Windows' and machine in ('amd64', 'x86_64'))):
-        raise RuntimeError('支持原生 Apple Silicon Mac 或 Windows 10/11 x64；不支持 Rosetta、Intel Mac、Windows ARM/32位和 Linux。')
+        raise RuntimeError('支持原生 Apple Silicon Mac 或 Windows 11 x64；不支持 Rosetta、Intel Mac、Windows ARM/32位和 Linux。')
     if system == 'Windows' and sys.maxsize <= 2**32:
         raise RuntimeError('Windows 需要64位 Python 3.12，请安装官方 x64 安装包。')
-    if system == 'Windows' and sys.getwindowsversion().build < 17763:
-        raise RuntimeError('需要 Windows 10 1809 或更新版本。')
+    if system == 'Windows':
+        version = sys.getwindowsversion()
+        if version.build < 17763 or (version.product_type == 1 and version.build < 22000):
+            raise RuntimeError('需要 Windows 11 x64 或 Windows Server 2019+；当前 Playwright 不正式支持 Windows 10。')
     if sys.version_info[:2] != (3, 12):
         raise RuntimeError('需要 Python 3.12。请运行系统对应的安装入口。')
     node = shutil.which('node')

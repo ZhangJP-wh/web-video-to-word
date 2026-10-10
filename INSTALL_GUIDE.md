@@ -7,8 +7,8 @@
 | 你的电脑 | 安装入口 | 验证状态 |
 | --- | --- | --- |
 | Apple 芯片 Mac（M1/M2/M3/M4 等） | 首次安装.command / bash install.sh | 已在现有 Mac 实测安装和启动 |
-| Windows 10 1809+ / Windows 11，64位 x64（常见 Intel/AMD PC） | install-windows.cmd / install-windows.ps1 | 新增兼容入口；验证结果见下方，尚未在全新实体 Windows 电脑实测 |
-| Intel Mac、Windows ARM/32位、WSL/Linux | 暂无 | 暂不支持自动安装 |
+| Windows 11，64位 x64（常见 Intel/AMD PC） | install-windows.cmd / install-windows.ps1 | GitHub Windows runner 完整安装/启动验收通过；尚未在全新实体 Windows 11 电脑实测 |
+| Intel Mac、Windows 10、Windows ARM/32位、WSL/Linux | 暂无 | 暂不支持自动安装 |
 
 ### 方法一：把这一段复制给你电脑上的 Agent（推荐）
 
@@ -25,6 +25,8 @@
 5. 在网页标题旁点击蓝色 **“登录或打开千问”**，在专用窗口中本人登录，处理验证码，完成后关闭登录窗口。Agent 不需要你的密码或 Cookie。
 6. 选择一个你有权处理的短音视频文件，或粘贴视频链接，点击橙色 **“开始生成文稿”**。Word 保存到用户“下载”文件夹中的“网页视频转语音识别文字稿（由千问提供支持）”。
 7. 下次使用：Mac 双击 `启动工具.command`；Windows 双击 `start-windows.cmd`。重启电脑后要重新启动工具；Windows 当前不自动设置开机启动。
+
+Windows 版本支持范围依据 [Playwright 官方系统要求](https://playwright.dev/python/docs/intro#system-requirements)。Windows Server 2019+ 可用于自动化验收；普通用户优先使用 Windows 11 x64。
 
 ### Windows：缺环境、被阻止或安装失败怎么办
 
@@ -134,6 +136,8 @@ bash install.sh --start-only --open  # 启动已安装工具并验证；不重�
 当前按千问页面限制处理单文件：最长 6 小时、音频最大 500MB；超过限制会提示失败。默认选择中英文自由说、不翻译、多人讨论，其他语言需要适配。下载能力由 [yt-dlp](https://github.com/yt-dlp/yt-dlp) 决定，不保证支持所有网页，不绕过付费或 DRM，请处理有权使用的媒体。
 
 ## 安装验收与验证范围
+
+Windows 的 PowerShell 完整入口、Chromium 下载/启动、全部测试、pip check、服务健康检查和重复启动已经通过 [GitHub 自动化验收](https://github.com/ZhangJP-wh/web-video-to-word/actions/runs/37683739032)。runner 预置了 Python/Node，因此 WinGet 缺环境安装、本人登录千问和实体新电脑安装不属于这次自动化验收。
 
 安装入口运行 `test_reader test_app test_qianwen test_task_controls test_install test_runtime_compat` 全部测试及 pip check。安装器回归覆盖错误架构/Node版本、损坏环境保留与修复、符号链接保护、依赖失败中止、错误服务身份拒绝和正确服务复用。千问单元测试使用模拟结果，不调用用户账号。
 
@@ -808,7 +812,11 @@ function Install-Package([string]$Id, [string[]]$ExtraArgs) {
 }
 try {
     if ([Environment]::OSVersion.Platform -ne 'Win32NT' -or [Environment]::OSVersion.Version.Build -lt 17763 -or $env:PROCESSOR_ARCHITECTURE -ne 'AMD64') {
-        throw '需要 Windows 10 1809/Windows 11 x64 和64位 PowerShell。Windows ARM、32位和 WSL 尚不支持。'
+        throw '需要 Windows 11 x64（或 Windows Server 2019+） 和64位 PowerShell。Windows ARM、32位和 WSL 尚不支持。'
+    }
+    $osInfo = Get-CimInstance Win32_OperatingSystem
+    if ($osInfo.ProductType -eq 1 -and [Environment]::OSVersion.Version.Build -lt 22000) {
+        throw '需要 Windows 11 x64；当前 Playwright 不正式支持 Windows 10，不能承诺自动安装。'
     }
     Refresh-Path
     $python = Find-Python
@@ -857,11 +865,13 @@ def run(args, **kwargs):
 def check_environment():
     system, machine = platform.system(), platform.machine().lower()
     if not ((system == 'Darwin' and machine == 'arm64') or (system == 'Windows' and machine in ('amd64', 'x86_64'))):
-        raise RuntimeError('支持原生 Apple Silicon Mac 或 Windows 10/11 x64；不支持 Rosetta、Intel Mac、Windows ARM/32位和 Linux。')
+        raise RuntimeError('支持原生 Apple Silicon Mac 或 Windows 11 x64；不支持 Rosetta、Intel Mac、Windows ARM/32位和 Linux。')
     if system == 'Windows' and sys.maxsize <= 2**32:
         raise RuntimeError('Windows 需要64位 Python 3.12，请安装官方 x64 安装包。')
-    if system == 'Windows' and sys.getwindowsversion().build < 17763:
-        raise RuntimeError('需要 Windows 10 1809 或更新版本。')
+    if system == 'Windows':
+        version = sys.getwindowsversion()
+        if version.build < 17763 or (version.product_type == 1 and version.build < 22000):
+            raise RuntimeError('需要 Windows 11 x64 或 Windows Server 2019+；当前 Playwright 不正式支持 Windows 10。')
     if sys.version_info[:2] != (3, 12):
         raise RuntimeError('需要 Python 3.12。请运行系统对应的安装入口。')
     node = shutil.which('node')
@@ -1916,7 +1926,7 @@ psutil>=6,<8; sys_platform == "win32"
 
 ### FILE: runtime_compat.py
 ```text
-"""Small platform boundary for Windows x64 and native Apple Silicon Mac."""
+"""Small platform boundary for Windows 11 x64 and native Apple Silicon Mac."""
 import os
 from pathlib import Path
 
@@ -2857,7 +2867,7 @@ class CompatibilityTests(unittest.TestCase):
                 self.assertEqual(result.returncode,0,result.stderr)
 
     def test_windows_environment(self):
-        with patch.object(install.platform,'system',return_value='Windows'), patch.object(install.platform,'machine',return_value='AMD64'), patch.object(install.sys,'version_info',(3,12)), patch.object(install.sys,'getwindowsversion',create=True,return_value=MagicMock(build=19045)), patch.object(install.shutil,'which',return_value='node.exe'), patch.object(install.subprocess,'check_output',return_value=json.dumps({'version':'24.0.0','arch':'x64'})):
+        with patch.object(install.platform,'system',return_value='Windows'), patch.object(install.platform,'machine',return_value='AMD64'), patch.object(install.sys,'version_info',(3,12)), patch.object(install.sys,'getwindowsversion',create=True,return_value=MagicMock(build=22631,product_type=1)), patch.object(install.shutil,'which',return_value='node.exe'), patch.object(install.subprocess,'check_output',return_value=json.dumps({'version':'24.0.0','arch':'x64'})):
             install.check_environment()
 
     def test_windows_service_redirector_identity(self):
@@ -2873,6 +2883,12 @@ class CompatibilityTests(unittest.TestCase):
             process.cmdline.return_value = ['python.exe', str(install.ROOT/'app.py')]
             process.parents.return_value = [MagicMock(pid=999)]
             self.assertFalse(install.started_service_matches(456,123))
+
+    def test_windows_10_rejected_before_dependency_install(self):
+        with patch.object(install.platform,'system',return_value='Windows'), patch.object(install.platform,'machine',return_value='AMD64'), patch.object(install.sys,'getwindowsversion',create=True,return_value=MagicMock(build=19045,product_type=1)), patch.object(install,'run') as run:
+            with self.assertRaisesRegex(RuntimeError,'Windows 11'):
+                install.check_environment()
+            run.assert_not_called()
 
     def test_windows_arm_rejected(self):
         with patch.object(install.platform,'system',return_value='Windows'), patch.object(install.platform,'machine',return_value='ARM64'):
@@ -3141,14 +3157,14 @@ exit $result
   "cloud_migration.py": "cc5c02b953f404a280f0230e836ff9a5fe04f3e7002361ef9b8b8cdc244c07a0",
   "index.html": "6dd9e443ec67aed7db67deeaec104d47a4306608018c1e71e02dd4de2d5590b2",
   "install-windows.cmd": "181344afef4643cc95c8098d5839cdf8df98963e8d05a13991deb41c8a38c2ed",
-  "install-windows.ps1": "41b154fee7d2df1352ad384de1b942b67bcc81a483e61542c7f7b1454119dcba",
-  "install.py": "76400d914fe51eada8a704ee5e18d1310d003daf564b163443aa6dc22c63e140",
+  "install-windows.ps1": "727a49a50e928b435c2863aff20dd8b20be4b0c5662d971c71ac8a4554dbaedd",
+  "install.py": "8fb062e855fb41616c65923dc4ca43808d4c710fc8919d1cb62c039a1fb2144c",
   "install.sh": "abead2c9d17bc14579905cab745be4220776c7d954a96042028c7b4855164826",
   "launch_service.py": "2cadb70ee153b678af24a6eb9e911d7e6e2ae4906ca8d3115ff8bb723d516dba",
   "qianwen_browser.py": "4dec4081b618300e55be1749778cc0129e71c7438cc170d56086baa953ff1a7e",
   "reader.py": "3b57ae5f35aba1e8d16d42b8a448283fbd961482cca5ae50cd2a3f765e7dc261",
   "requirements.txt": "ca2ed115c7d5ef1c7d63e54519aa39795e35d48d74ac5e8b7be278ccc8e7f083",
-  "runtime_compat.py": "8390ff8d5940b5665cce78b7f302ded196c79b1e8476fa62ef3d5de38fcb5fa5",
+  "runtime_compat.py": "88356cfde1ee32b4a9100f48ee374ed7e5ac0ba558f6a8626dde430c10b1191f",
   "smoke_qianwen.py": "5a41ae58b74a8f2edaaadeb36c60235646989c5bdb2aa49e17d72dfd8778f71e",
   "smoke_qianwen_runner.py": "10c6047ad2b7ae20cac3945b41f8afdc047975fd2da3ef0dc576f3753a512409",
   "start-windows.cmd": "c7337ce90691fcda24e0bf19b584ff342288322681552433921f92ef399ed9b8",
@@ -3157,7 +3173,7 @@ exit $result
   "test_install.py": "5ecdd4f27fc1761c89a27fd5d623377f05315a318cbb622bbd615686798b4941",
   "test_qianwen.py": "9fb2902cabfbb02f36b5ce3bed5c96205ba05b6b390833cae97e10ecafd78473",
   "test_reader.py": "d76beb93692d593e8d9be5d0d6b2cd2a18662fda323897053f23db5726aeaaa7",
-  "test_runtime_compat.py": "1f0ae09861bb4f5ffa6bd7e6af237512c4e93229ef3298c80471a2fe287754d6",
+  "test_runtime_compat.py": "e7e4d7ddc223a5586ab803f7969a4a6eb69861f64d1257b48f02ade15a939188",
   "test_task_controls.py": "4c7ef80bd87e091c6140d660cacd406f932048ba89809b4a9236e1b327d3b9b5",
   "tools/build_guides.py": "3aae860f2e5101aae45559fa2a0494245be405a84c9089b9e5c8316e2a4a9d56",
   "停用自动启动.command": "0c2353cd41fd56b737864d09d6fe83f8b7d62cc1c51757e86fe0bc6bbd76b682",

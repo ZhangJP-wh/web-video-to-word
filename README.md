@@ -7,8 +7,8 @@
 | 你的电脑 | 安装入口 | 验证状态 |
 | --- | --- | --- |
 | Apple 芯片 Mac（M1/M2/M3/M4 等） | 首次安装.command / bash install.sh | 已在现有 Mac 实测安装和启动 |
-| Windows 10 1809+ / Windows 11，64位 x64（常见 Intel/AMD PC） | install-windows.cmd / install-windows.ps1 | 新增兼容入口；验证结果见下方，尚未在全新实体 Windows 电脑实测 |
-| Intel Mac、Windows ARM/32位、WSL/Linux | 暂无 | 暂不支持自动安装 |
+| Windows 11，64位 x64（常见 Intel/AMD PC） | install-windows.cmd / install-windows.ps1 | GitHub Windows runner 完整安装/启动验收通过；尚未在全新实体 Windows 11 电脑实测 |
+| Intel Mac、Windows 10、Windows ARM/32位、WSL/Linux | 暂无 | 暂不支持自动安装 |
 
 ### 方法一：把这一段复制给你电脑上的 Agent（推荐）
 
@@ -25,6 +25,8 @@
 5. 在网页标题旁点击蓝色 **“登录或打开千问”**，在专用窗口中本人登录，处理验证码，完成后关闭登录窗口。Agent 不需要你的密码或 Cookie。
 6. 选择一个你有权处理的短音视频文件，或粘贴视频链接，点击橙色 **“开始生成文稿”**。Word 保存到用户“下载”文件夹中的“网页视频转语音识别文字稿（由千问提供支持）”。
 7. 下次使用：Mac 双击 `启动工具.command`；Windows 双击 `start-windows.cmd`。重启电脑后要重新启动工具；Windows 当前不自动设置开机启动。
+
+Windows 版本支持范围依据 [Playwright 官方系统要求](https://playwright.dev/python/docs/intro#system-requirements)。Windows Server 2019+ 可用于自动化验收；普通用户优先使用 Windows 11 x64。
 
 ### Windows：缺环境、被阻止或安装失败怎么办
 
@@ -134,6 +136,8 @@ bash install.sh --start-only --open  # 启动已安装工具并验证；不重�
 当前按千问页面限制处理单文件：最长 6 小时、音频最大 500MB；超过限制会提示失败。默认选择中英文自由说、不翻译、多人讨论，其他语言需要适配。下载能力由 [yt-dlp](https://github.com/yt-dlp/yt-dlp) 决定，不保证支持所有网页，不绕过付费或 DRM，请处理有权使用的媒体。
 
 ## 安装验收与验证范围
+
+Windows 的 PowerShell 完整入口、Chromium 下载/启动、全部测试、pip check、服务健康检查和重复启动已经通过 [GitHub 自动化验收](https://github.com/ZhangJP-wh/web-video-to-word/actions/runs/37683739032)。runner 预置了 Python/Node，因此 WinGet 缺环境安装、本人登录千问和实体新电脑安装不属于这次自动化验收。
 
 安装入口运行 `test_reader test_app test_qianwen test_task_controls test_install test_runtime_compat` 全部测试及 pip check。安装器回归覆盖错误架构/Node版本、损坏环境保留与修复、符号链接保护、依赖失败中止、错误服务身份拒绝和正确服务复用。千问单元测试使用模拟结果，不调用用户账号。
 

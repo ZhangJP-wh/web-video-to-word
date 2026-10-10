@@ -40,7 +40,11 @@ function Install-Package([string]$Id, [string[]]$ExtraArgs) {
 }
 try {
     if ([Environment]::OSVersion.Platform -ne 'Win32NT' -or [Environment]::OSVersion.Version.Build -lt 17763 -or $env:PROCESSOR_ARCHITECTURE -ne 'AMD64') {
-        throw '需要 Windows 10 1809/Windows 11 x64 和64位 PowerShell。Windows ARM、32位和 WSL 尚不支持。'
+        throw '需要 Windows 11 x64（或 Windows Server 2019+） 和64位 PowerShell。Windows ARM、32位和 WSL 尚不支持。'
+    }
+    $osInfo = Get-CimInstance Win32_OperatingSystem
+    if ($osInfo.ProductType -eq 1 -and [Environment]::OSVersion.Version.Build -lt 22000) {
+        throw '需要 Windows 11 x64；当前 Playwright 不正式支持 Windows 10，不能承诺自动安装。'
     }
     Refresh-Path
     $python = Find-Python

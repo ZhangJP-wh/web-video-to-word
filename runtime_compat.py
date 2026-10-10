@@ -1,4 +1,4 @@
-"""Small platform boundary for Windows x64 and native Apple Silicon Mac."""
+"""Small platform boundary for Windows 11 x64 and native Apple Silicon Mac."""
 import os
 from pathlib import Path
 
