@@ -2,7 +2,7 @@
 
 版本：2026-10-07。适用对象：电脑初学者，以及具备本地文件、终端和网络权限的 AI Agent。
 
-这是一份可独立交给 Agent 的指南：附录包含本分享版的完整源码和校验值。本项目的 GitHub 地址为 https://github.com/ZhangJP-wh/web-video-to-word 。可点击 Code → Download ZIP 下载源码。拿到配套源码 ZIP 时可以直接解压；只有本文时，Agent 可以按第 11 节提取附录源码。普通读者只需读第 1～8 节，代码附录不必逐行阅读。
+这是一份可独立交给 Agent 的指南：附录包含本分享版的完整源码和校验值。工具没有公开下载网站或 GitHub 仓库；本文不会虚构一个下载地址。拿到配套源码 ZIP 时可以直接解压；只有本文时，Agent 可以按第 11 节提取附录源码。普通读者只需读第 1～8 节，代码附录不必逐行阅读。
 
 ## 1. 这个工具做什么
 
@@ -168,6 +168,8 @@ curl --fail --location 'https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen3-AS
 
 ### 7.1 登录自动启动与异常恢复
 
+双击“自动恢复测试.command”可以实测异常恢复：脚本停止本工具的网页服务，等待最多 45 秒，检查新服务进程和原识别进程。结果保存到 work/recovery-test.json。测试只检查网页服务恢复，不模拟电脑重启，也不检查文稿准确率。
+
 可选：首次安装完成后，双击“启用自动启动.command”。它注册当前用户的 macOS LaunchAgent，不需要管理员密码。成功时显示“自动启动与自动恢复已启用”。只在本机 127.0.0.1 上提供页面；不会自动打开浏览器或抢占屏幕。当前用户登录后启动，服务意外退出时由 launchd 重启，通常需要等待约 10 秒。未登录、关机和休眠时无法保证处理或访问。
 
 启动项路径为 ~/Library/LaunchAgents/com.zhangjp.web-video-to-word.plist，后台日志是项目 work/service.log。程序需要一直保留在安装目录；移动或删除目录会导致启动项失效。macOS 若询问后台项目、文件访问或授权，请本人核查并按系统提示处理。
@@ -238,7 +240,7 @@ df -h "$HOME"
 
 ### A2：源码准备
 
-有源码 ZIP 就解压至目标目录；只有本文则运行第 11 节提取程序。先验证 文件校验.json；源码应不包含 分享者个人目录 的专用路径、个人历史任务 ID、个人 job.json、Cookie、.venv 或 work/model-cache。附录源码仅用于建立朋友电脑上的副本，不修改分享者正在运行的工具。
+有源码 ZIP 就解压至目标目录；只有本文则运行第 11 节提取程序。先验证 文件校验.json；源码应不包含 /Users/你的用户名 的专用路径、个人历史任务 ID、个人 job.json、Cookie、.venv 或 work/model-cache。附录源码仅用于建立朋友电脑上的副本，不修改分享者正在运行的工具。
 
 ### A3：安装与下载
 
@@ -1362,6 +1364,7 @@ print '确认页面能打开后，这个终端窗口可以关闭。'
 ```json
 {
   "app.py": "1460585eb00541738a8c8b32a1b60f908e77091b4bfa19734b7c42e665ef340a",
+  "check_recovery.py": "7fb929eabc113b13551764fe57caa4f72e7f37f6cded04a75c590fe54e1a3d2d",
   "index.html": "778754984ab08de8e9a3e258265d23793114a2f5fe4f188c10b1b627731d57fa",
   "install.py": "d423b71bfd29145b2b6616da4b6474ad86beec07813eb8c9c36330ed298f19bb",
   "launch_service.py": "2cadb70ee153b678af24a6eb9e911d7e6e2ae4906ca8d3115ff8bb723d516dba",
@@ -1373,6 +1376,7 @@ print '确认页面能打开后，这个终端窗口可以关闭。'
   "停用自动启动.command": "0c2353cd41fd56b737864d09d6fe83f8b7d62cc1c51757e86fe0bc6bbd76b682",
   "启动工具.command": "f67940511e7be84f96ef4eadc60dee14b08668d185f06f94cd03a02ebd3d59ca",
   "启用自动启动.command": "3475ec88b5c035f49adc0a13b3a14a09255ca19aa600a750051f6a8f1d8a07b6",
+  "自动恢复测试.command": "e5f7e855d99cd648d6ae2e1382da651e8afb7597f184e08d1661d6daef5cc7f6",
   "首次安装.command": "3386934c6c62f0983f9d9ee8541bf0d73a4fa671be319201efa649bf71c28d32"
 }
 
@@ -1550,6 +1554,84 @@ exit $result
 #!/bin/zsh
 cd "${0:A:h}" || exit 1
 .venv/bin/python launch_service.py install --port 8767
+result=$?
+read 'reply?按回车关闭窗口。'
+exit $result
+
+```
+
+### FILE: check_recovery.py
+```python
+"""Controlled launchd recovery check. Run from the normal Mac user environment."""
+import argparse
+import json
+import os
+import plistlib
+import subprocess
+import time
+import urllib.request
+from pathlib import Path
+from launch_service import LABEL
+ROOT=Path(__file__).resolve().parent
+
+def health(port):
+    with urllib.request.urlopen(f'http://127.0.0.1:{port}/health',timeout=2) as response:
+        data=json.load(response)
+    if data.get('project')!=str(ROOT):raise ValueError('页面不属于当前项目，停止测试。')
+    return data
+
+def reader_pids():
+    pids=set()
+    for lock in (ROOT/'work/jobs').glob('*/.prepare.lock'):
+        result=subprocess.run(['/usr/sbin/lsof','-t',str(lock)],capture_output=True,text=True)
+        pids.update(int(value) for value in result.stdout.split())
+    return pids
+
+def run(port):
+    report={'passed':False,'tested_at':time.time(),'port':port}
+    try:
+        path=Path.home()/'Library/LaunchAgents'/(LABEL+'.plist')
+        config=plistlib.loads(path.read_bytes())
+        if config.get('WorkingDirectory')!=str(ROOT) or not config.get('KeepAlive') or not config.get('AbandonProcessGroup'):
+            raise ValueError('启动项不匹配或缺少自动恢复设置，未停止服务。')
+        before=health(port);report['before_pid']=before['pid']
+        readers=reader_pids()-{before['pid']}
+        started=time.monotonic()
+        result=subprocess.run(['/bin/launchctl','kill','SIGTERM',f'gui/{os.getuid()}/{LABEL}'],capture_output=True,text=True)
+        if result.returncode:raise RuntimeError(result.stderr.strip())
+        while time.monotonic()-started<45:
+            try:
+                after=health(port)
+                if after['pid']!=before['pid']:
+                    report.update(after_pid=after['pid'],recovery_seconds=round(time.monotonic()-started,2))
+                    with urllib.request.urlopen(f'http://127.0.0.1:{port}/jobs') as response:
+                        report['task_count']=len(json.load(response))
+                    for pid in readers:
+                        try:os.kill(pid,0)
+                        except ProcessLookupError:raise RuntimeError('原识别进程已退出，需要检查是否正常完成。')
+                    report.update(passed=True,preserved_reader_pids=sorted(readers));break
+            except OSError:pass
+            time.sleep(.5)
+        if not report['passed']:raise RuntimeError('45 秒内未观察到网页服务恢复。')
+    except (OSError,ValueError,RuntimeError) as error:report['error']=str(error)
+    finally:
+        (ROOT/'work').mkdir(exist_ok=True)
+        (ROOT/'work/recovery-test.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
+    print(json.dumps(report,ensure_ascii=False,indent=2))
+    if not report['passed']:raise SystemExit('测试未通过或未能执行，请保留以上报错。')
+    print('自动恢复实测通过，原识别进程保留。')
+
+if __name__=='__main__':
+    parser=argparse.ArgumentParser();parser.add_argument('--port',type=int,default=8767)
+    run(parser.parse_args().port)
+
+```
+
+### FILE: 自动恢复测试.command
+```zsh
+#!/bin/zsh
+cd "${0:A:h}" || exit 1
+.venv/bin/python check_recovery.py --port 8767
 result=$?
 read 'reply?按回车关闭窗口。'
 exit $result
