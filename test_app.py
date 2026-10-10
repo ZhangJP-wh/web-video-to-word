@@ -108,5 +108,39 @@ class WorkerFailureTests(unittest.TestCase):
             self.assertEqual(run.call_count,2)
             self.assertEqual(fakequeue.task_done.call_count,2)
 
+class LocalUploadTests(unittest.TestCase):
+    def test_rejects_incomplete_upload_without_queuing_or_residue(self):
+        import io
+        with tempfile.TemporaryDirectory() as tmp,patch.object(app,'WORK',Path(tmp)),patch.object(app,'enqueue') as enqueue:
+            with self.assertRaisesRegex(ValueError,'上传中断'):
+                app.receive_upload(io.BytesIO(b'abc'),10,'test.mp3')
+            enqueue.assert_not_called()
+            self.assertFalse(list((Path(tmp)/'jobs').glob('*/job.json')))
+
+    def test_http_upload_streams_file_and_preserves_chinese_name(self):
+        import http.client, threading
+        from urllib.parse import quote
+        from http.server import ThreadingHTTPServer
+        server=ThreadingHTTPServer(('127.0.0.1',0),app.Handler)
+        port=server.server_port
+        with tempfile.TemporaryDirectory() as tmp,patch.object(app,'WORK',Path(tmp)),patch.object(app,'PORT',port),patch.object(app,'enqueue',return_value='123456abcdef') as enqueue:
+            thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+            try:
+                conn=http.client.HTTPConnection('127.0.0.1',port)
+                conn.request('POST','/upload',body=b'example-audio',headers={'Origin':f'http://127.0.0.1:{port}','X-File-Name':quote('采访.mp3'),'Content-Type':'application/octet-stream'})
+                response=conn.getresponse();result=json.loads(response.read());conn.close()
+                self.assertEqual(response.status,200);self.assertEqual(result['id'],'123456abcdef')
+                enqueue.assert_called_once()
+                meta=json.loads(next((Path(tmp)/'jobs').glob('*/job.json')).read_text())
+                self.assertEqual(meta['source_label'],'本地上传文件：采访.mp3')
+                self.assertEqual(Path(meta['media']).read_bytes(),b'example-audio')
+            finally:server.shutdown();server.server_close();thread.join()
+
+    def test_unsupported_file_rejected_before_writing(self):
+        import io
+        with tempfile.TemporaryDirectory() as tmp,patch.object(app,'WORK',Path(tmp)):
+            with self.assertRaises(ValueError):app.receive_upload(io.BytesIO(b'abc'),3,'a.command')
+            self.assertFalse((Path(tmp)/'jobs').exists())
+
 if __name__ == '__main__':
     unittest.main()

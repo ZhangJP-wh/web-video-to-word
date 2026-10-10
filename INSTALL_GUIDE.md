@@ -6,10 +6,10 @@
 
 1. 首次安装后，双击“配置千问登录.command”，在专用窗口登录千问，返回终端按回车。
 2. 双击“启动工具.command”，打开终端给出的本机网页地址。公开安装版默认为 http://127.0.0.1:8767/。
-3. 粘贴 YouTube、哔哩哔哩等视频页面链接，点击橙色“开始生成文稿”。任务添加成功后链接框自动清空，可继续粘贴下一条；提交失败时保留链接。链接输入框关闭浏览器历史自动填充。
+3. 可点击或拖拽本地音视频文件到上传入口（每次一个，最大6GB），或粘贴 YouTube、哔哩哔哩等视频页面链接，点击橙色“开始生成文稿”。任务添加成功后链接框自动清空，可继续粘贴下一条；提交失败时保留链接。链接输入框关闭浏览器历史自动填充。
 4. 稍后回来查看文稿，或点击“打开文档所在位置”。任务记录最新的排在最上面。
 
-每份 Word 第一行保留原视频网页链接，按视频标题命名，包含全部识别原文、时间戳和发言人信息。显著提示：
+本地文件与链接共用橙色“开始生成文稿”按钮，选择文件会清空链接，输入链接会取消文件选择。上传仅复制文件，完成后清理工具副本，不删除用户原文件。千问登录、原文、发言人和时间戳设置沿用现有流程。每份 Word 第一行保留原视频网页链接（本地上传则注明来源文件名），按视频标题或本地文件名命名，包含全部识别原文、时间戳和发言人信息。显著提示：
 
 > 本文稿内容为语音模型识别结果，需要注意：可能有错别字和识别不准确之处。
 
@@ -82,7 +82,7 @@
 
 ## 验证说明
 
-本次 35 项测试通过，其中云端识别返回结果在单元测试中模拟；旧本地推理断点测试已移除。此前本机20秒音频的千问后台完整流程约46秒，不能推断长视频速度或识别准确率。未在另一台全新 Mac 完成安装实测。
+本次 39 项测试通过，其中云端识别返回结果在单元测试中模拟；旧本地推理断点测试已移除。此前本机20秒音频的千问后台完整流程约46秒，不能推断长视频速度或识别准确率。未在另一台全新 Mac 完成安装实测。
 
 ## 主要文件
 
@@ -108,7 +108,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, unquote
 
 from reader import ROOT, WORK, OUTPUT, LEGACY_OUTPUT, NOTICE, save_json, download_url
 
@@ -308,7 +308,9 @@ def open_login():
 def enqueue(url, engine="qianwen"):
     if engine != "qianwen":
         raise ValueError("不支持的语音识别方式")
-    if urlparse(url).scheme not in ('http', 'https') or not urlparse(url).hostname:
+    ident = hashlib.sha256(url.encode()).hexdigest()[:12]
+    local = url.startswith('local://') and (WORK/'jobs'/ident/'job.json').is_file()
+    if not local and (urlparse(url).scheme not in ('http', 'https') or not urlparse(url).hostname):
         raise ValueError('请输入完整的 HTTP/HTTPS 视频页面链接')
     ident = hashlib.sha256(url.encode()).hexdigest()[:12]
     folder = WORK / 'jobs' / ident
@@ -334,9 +336,41 @@ def enqueue(url, engine="qianwen"):
         generation=__import__('uuid').uuid4().hex
         generations[ident]=generation
         tasks.put((ident, url, generation))
-        if not meta.get('title'):
+        if not meta.get('title') and not local:
             start_title_lookup(ident, url)
     return ident
+
+
+MEDIA_EXTENSIONS={'.mp4','.mov','.mkv','.webm','.avi','.wmv','.m4v','.flv','.mp3','.wav','.m4a','.aac','.ogg','.flac','.aiff','.wma','.amr','.mpeg','.mpg','.opus'}
+
+def receive_upload(stream, length, original_name):
+    """Stream a browser-selected file into an isolated task; never move the user's original."""
+    import uuid, shutil
+    from reader import filename
+    name=Path(original_name.replace('\\','/')).name
+    if Path(name).suffix.lower() not in MEDIA_EXTENSIONS:
+        raise ValueError('请选择支持的音频或视频文件')
+    if not 0 < length <= 6_000_000_000:
+        raise ValueError('文件为空或超过 6GB')
+    url='local://'+uuid.uuid4().hex
+    ident=hashlib.sha256(url.encode()).hexdigest()[:12]
+    folder=WORK/'jobs'/ident
+    media=folder/'media';media.mkdir(parents=True)
+    target=media/(filename(Path(name).stem)+Path(name).suffix.lower())
+    try:
+        remaining=length
+        with target.open('wb') as output:
+            while remaining:
+                chunk=stream.read(min(1024*1024,remaining))
+                if not chunk:raise ValueError('文件上传中断，请重新选择并提交')
+                output.write(chunk);remaining-=len(chunk)
+        save_json(folder/'job.json',{'url':url,'source_kind':'local','source_label':'本地上传文件：'+name,
+            'title':Path(name).stem,'name':filename(Path(name).stem),'media':str(target),
+            'state':'queued','engine':'qianwen','created_at':time.time()})
+        return enqueue(url)
+    except Exception:
+        shutil.rmtree(folder,ignore_errors=True)
+        raise
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -359,7 +393,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == '/':
             return self.reply(200, (ROOT / 'index.html').read_bytes(), 'text/html; charset=utf-8')
         if self.path == '/health':
-            return self.reply(200, {'ok': True, 'project': str(ROOT), 'pid': os.getpid(), 'engines': ['qianwen'], 'task_controls': True})
+            return self.reply(200, {'ok': True, 'project': str(ROOT), 'pid': os.getpid(), 'engines': ['qianwen'], 'task_controls': True, 'local_upload': True})
         if self.path == '/qianwen/status':
             return self.reply(200, login_status())
         if self.path == '/jobs':
@@ -387,6 +421,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(403, {'error': '请求来源不符'})
         try:
             length = int(self.headers.get('Content-Length', '0'))
+            if self.path == '/upload':
+                self.connection.settimeout(120)
+                return self.reply(200, {'id': receive_upload(self.rfile,length,unquote(self.headers.get('X-File-Name','')))})
             if not 0 < length <= 5_000_000:
                 raise ValueError('提交内容为空或过大')
             data = json.loads(self.rfile.read(length))
@@ -551,16 +588,16 @@ if __name__=='__main__':main()
 <title>网页视频转语音识别文字稿（由千问提供支持）</title>
 <style>
 body{font:16px/1.7 -apple-system,BlinkMacSystemFont,sans-serif;color:#24322d;background:#f4f6f3;max-width:920px;margin:48px auto;padding:0 24px}h1{font-size:32px}h1 button{font-size:14px;padding:6px 10px;font-weight:normal;vertical-align:middle;white-space:nowrap}input,button,.action{font:inherit;padding:10px 14px;border:1px solid #c6d1ca;border-radius:8px}input[type=url]{flex:1;min-width:180px}button,.action{background:#245441;color:white;cursor:pointer;text-decoration:none;display:inline-block}form,.actions{display:flex;gap:12px;flex-wrap:wrap}article{background:white;padding:24px;border:1px solid #e0e7e1;border-radius:12px;margin:20px 0}small{color:#62736b}a{color:#245441}#message{color:#8b4520}.notice{background:#fff3cd;color:#9c0006;padding:14px 18px;border-left:4px solid #b07800;font-weight:bold}.secondary{background:white;color:#245441}
-#qianwen-login{background:#004B93;border-color:#004B93}#qianwen-login:hover{background:#003B75}#form button{background:#D65A00;border-color:#D65A00}#form button:hover{background:#B94D00}</style>
+#upload-zone{border:1px dashed #c6d1ca;border-radius:8px;padding:12px 14px;cursor:pointer;flex-basis:100%;box-sizing:border-box}#file-name{display:block;font-size:14px;color:#62736b}#form input[type=url]{order:0}#form button{order:1}#upload-zone{order:2}#qianwen-login{background:#004B93;border-color:#004B93}#qianwen-login:hover{background:#003B75}#form button{background:#D65A00;border-color:#D65A00}#form button:hover{background:#B94D00}</style>
 <h1>网页视频转语音识别文字稿（由千问提供支持） <button type="button" id="qianwen-login">登录千问</button></h1>
 <p>粘贴网页链接，后台下载并默认交给千问识别语音、区分发言人，生成带时间戳、以视频标题命名的 Word。</p>
-<form id="form" autocomplete="off"><input id="url" autocomplete="off" aria-label="音视频网页链接" type="url" required placeholder="粘贴YouTube、B站、小宇宙等音视频网页链接"><button>开始生成文稿</button></form>
+<form id="form" autocomplete="off"><input id="url" autocomplete="off" aria-label="音视频网页链接" type="url" placeholder="粘贴YouTube、B站、小宇宙等音视频网页链接"><label id="upload-zone" tabindex="0">点击或将音视频文件拖拽到此处上传<input id="media-file" type="file" accept="audio/*,video/*,.mkv,.flac,.opus" hidden><span id="file-name"></span></label><button>开始生成文稿</button></form>
 <p class="actions"><span id="login-status" role="status">正在读取登录千问状态…</span></p><p id="message" role="status"></p>
 <p class="notice">本文稿内容为语音模型识别结果，需要注意：可能有错别字和识别不准确之处。</p>
 <p><small>Word 保存到“下载/网页视频转语音识别文字稿（由千问提供支持）”。音频将上传千问服务器；需要登录时点击上方“登录千问”。完成后直接查看或打开所在位置。Word 完整性检查通过后自动将原音视频移入废纸篓并清理临时音轨。</small></p>
 <div id="jobs"></div>
 <script>
-if(location.port==='8767')location.replace('http://127.0.0.1:8768/');
+
 const historicalTaskTimes={};
 const stages={queued:'排队中',downloading:'正在下载',downloaded:'下载完成',diarizing:'正在准备千问识别',transcribing:'正在准备千问识别',cloud_preparing:'正在准备上传音频',cloud_transcribing:'等待千问处理结果或加载文稿页面',extracting_audio:'正在提取音频',cloud_connecting:'正在连接千问并检查登录',cloud_uploading:'正在向千问上传音频',cloud_confirming_upload:'等待千问页面确认上传记录（尚未确认成功）',retry_waiting:'页面加载超时，稍后自动重试',generating_document:'正在生成并检查 Word 文稿',cleaning:'Word 已生成，正在清理原音视频和临时文件',cloud_exporting:'正在导出千问原文 Word',completed:'Word 已生成，可以查看',login_required:'需要重新登录千问',failed:'处理失败，进度已保留'};
 const msg=document.querySelector('#message');
@@ -568,10 +605,17 @@ async function requireControls(){let h=await(await fetch('/health')).json();if(!
 document.querySelector('#qianwen-login').onclick=async()=>{try{await requireControls();let r=await post('/qianwen/login',{});msg.textContent=r.message}catch(e){msg.textContent=e.message}};
 async function refreshLogin(){try{let h=await(await fetch('/health')).json();if(!h.task_controls){document.querySelector('#login-status').textContent='新功能需要加载本次更新';return}let s=await(await fetch('/qianwen/status')).json();let text=s.window_open?'请在千问窗口中完成登录，完成后关闭窗口':s.status==='required'?'千问需要重新登录，请点击标题旁的“登录千问”按钮':s.last_success?'最近成功转写：'+new Date(s.last_success*1000).toLocaleString()+'；任务中会继续验证登录':'登录状态待验证；首次使用请点击登录千问';document.querySelector('#login-status').textContent=s.error||text}catch(e){document.querySelector('#login-status').textContent='暂时无法读取登录状态'}}
 async function post(url,data){let r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});let j=await r.json();if(!r.ok)throw Error(j.error);return j}
-document.querySelector('#form').onsubmit=async e=>{e.preventDefault();try{if('qianwen'==='qianwen'){let health=await(await fetch('/health')).json();if(!health.engines?.includes('qianwen'))throw Error('网页服务需要加载新版。请完成登录千问配置后再试。')}await post('/jobs',{url:document.querySelector('#url').value,engine:'qianwen'});document.querySelector('#url').value='';msg.textContent='已加入后台队列。你可以继续做其他事情，稍后回来查看文稿。';await refresh()}catch(e){msg.textContent=e.message}};
+let selectedFile=null;
+const zone=document.querySelector('#upload-zone'),picker=document.querySelector('#media-file'),urlInput=document.querySelector('#url');
+function selectFile(file){if(!file)return;selectedFile=file;urlInput.value='';document.querySelector('#file-name').textContent=file.name}
+picker.onchange=()=>selectFile(picker.files[0]);
+zone.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();picker.click()}};
+zone.ondragover=e=>{e.preventDefault()};zone.ondrop=e=>{e.preventDefault();if(e.dataTransfer.files.length!==1){msg.textContent='每次请选择一个音视频文件';return}selectFile(e.dataTransfer.files[0])};
+urlInput.oninput=()=>{if(urlInput.value){selectedFile=null;picker.value='';document.querySelector('#file-name').textContent=''}};
+document.querySelector('#form').onsubmit=async e=>{e.preventDefault();try{if('qianwen'==='qianwen'){let health=await(await fetch('/health')).json();if(!health.engines?.includes('qianwen'))throw Error('网页服务需要加载新版。请完成登录千问配置后再试。')}if(selectedFile){let h=await(await fetch('/health')).json();if(!h.local_upload)throw Error('请双击“加载本次更新.command”启用本地文件入口。');let button=document.querySelector('#form button');button.disabled=true;msg.textContent='正在将文件交给本机后台，请稍候…';try{let r=await fetch('/upload',{method:'POST',headers:{'Content-Type':'application/octet-stream','X-File-Name':encodeURIComponent(selectedFile.name)},body:selectedFile});let j=await r.json();if(!r.ok)throw Error(j.error)}finally{button.disabled=false}}else{if(!urlInput.value.trim())throw Error('请粘贴链接或选择音视频文件');await post('/jobs',{url:urlInput.value,engine:'qianwen'})}selectedFile=null;picker.value='';document.querySelector('#file-name').textContent='';document.querySelector('#url').value='';msg.textContent='已加入后台队列。你可以继续做其他事情，稍后回来查看文稿。';await refresh()}catch(e){msg.textContent=e.message}};
 function taskHeading(j){let title=j.title;if(j.state==='queued')return '待处理 · '+(title||'正在获取标题（'+new URL(j.url).hostname+' / '+(new URL(j.url).searchParams.get('v')||new URL(j.url).pathname.split('/').filter(Boolean).pop()||j.id)+'）');return title||'正在获取标题 · '+j.id}
 function link(text,url,style){let a=document.createElement('a');a.textContent=text;a.href=url;if(style)a.className=style;return a}
-async function refresh(){try{let jobs=await(await fetch('/jobs')).json();jobs.sort((a,b)=>(b.created_at??historicalTaskTimes[b.id]??b.added_at??Infinity)-(a.created_at??historicalTaskTimes[a.id]??a.added_at??Infinity));let host=document.querySelector('#jobs');host.replaceChildren();for(let j of jobs){let card=document.createElement('article');let h=document.createElement('h2');h.textContent=taskHeading(j);card.append(h);let p=document.createElement('p');p.textContent=(j.document&&!j.has_document)?'Word 文件已不在原保存位置，重新提交链接可生成':(stages[j.state]||'状态暂未识别：'+String(j.state));card.append(p);card.append(link('原网页',j.url));if(j.error){let err=document.createElement('p');err.textContent=j.error;card.append(err)}if(j.cleanup_error){let note=document.createElement('p');note.textContent='Word 已生成，但部分临时文件未清理：'+j.cleanup_error;card.append(note)}if(j.has_document){let actions=document.createElement('p');actions.className='actions';actions.append(link('查看 Word 文稿','/preview/'+j.id,'action'));let reveal=document.createElement('button');reveal.type='button';reveal.className='secondary';reveal.textContent='打开文档所在位置';let revealStatus=document.createElement('small');revealStatus.setAttribute('role','status');reveal.onclick=async()=>{reveal.disabled=true;revealStatus.textContent='正在打开文件夹…';try{await post('/reveal/'+j.id,{});revealStatus.textContent='已打开 Finder 文件夹。';msg.textContent='已打开文档所在的 Finder 文件夹。'}catch(e){revealStatus.textContent='打开失败：'+e.message;msg.textContent='打开失败：'+e.message}finally{reveal.disabled=false}};actions.append(reveal);actions.append(revealStatus);card.append(actions);let note=document.createElement('small');note.textContent=j.temporary_files_removed?(j.media_trashed?'原音视频已移入废纸篓，临时音轨已清理。':'原音视频与临时音轨已清理。'):'Word 内容未经人工校对。';card.append(note)}let controls=document.createElement('p');controls.className='actions';if(j.state==='failed'||j.state==='login_required'){let retry=document.createElement('button');retry.textContent='重试任务';retry.onclick=async()=>{try{await post('/jobs',{url:j.url,engine:'qianwen'});await refresh()}catch(e){msg.textContent=e.message}};controls.append(retry)}let remove=document.createElement('button');remove.type='button';remove.className='secondary';remove.style.color='#a52222';remove.textContent='删除任务';remove.onclick=async()=>{if(!confirm('删除“'+(j.title||j.id)+'”？将停止该任务，把本机任务文件和相关文稿移入废纸篓。千问云端记录需在千问网页中管理。'))return;remove.disabled=true;try{await requireControls();let r=await post('/delete/'+j.id,{});msg.textContent=r.message;await refresh()}catch(e){msg.textContent='删除失败：'+e.message;remove.disabled=false}};if(j.has_document){card.querySelector('.actions').append(remove)}else{controls.append(remove)}if(controls.children.length)card.append(controls);host.append(card)}await refreshLogin()}catch(e){msg.textContent='后台连接中断，请重新启动工具。'}}
+async function refresh(){try{let jobs=await(await fetch('/jobs')).json();jobs.sort((a,b)=>(b.created_at??historicalTaskTimes[b.id]??b.added_at??Infinity)-(a.created_at??historicalTaskTimes[a.id]??a.added_at??Infinity));let host=document.querySelector('#jobs');host.replaceChildren();for(let j of jobs){let card=document.createElement('article');let h=document.createElement('h2');h.textContent=taskHeading(j);card.append(h);let p=document.createElement('p');p.textContent=(j.document&&!j.has_document)?'Word 文件已不在原保存位置，重新提交链接可生成':(stages[j.state]||'状态暂未识别：'+String(j.state));card.append(p);if(j.source_kind==='local'){let source=document.createElement('p');source.textContent=j.source_label;card.append(source)}else card.append(link('原网页',j.url));if(j.error){let err=document.createElement('p');err.textContent=j.error;card.append(err)}if(j.cleanup_error){let note=document.createElement('p');note.textContent='Word 已生成，但部分临时文件未清理：'+j.cleanup_error;card.append(note)}if(j.has_document){let actions=document.createElement('p');actions.className='actions';actions.append(link('查看 Word 文稿','/preview/'+j.id,'action'));let reveal=document.createElement('button');reveal.type='button';reveal.className='secondary';reveal.textContent='打开文档所在位置';let revealStatus=document.createElement('small');revealStatus.setAttribute('role','status');reveal.onclick=async()=>{reveal.disabled=true;revealStatus.textContent='正在打开文件夹…';try{await post('/reveal/'+j.id,{});revealStatus.textContent='已打开 Finder 文件夹。';msg.textContent='已打开文档所在的 Finder 文件夹。'}catch(e){revealStatus.textContent='打开失败：'+e.message;msg.textContent='打开失败：'+e.message}finally{reveal.disabled=false}};actions.append(reveal);actions.append(revealStatus);card.append(actions);let note=document.createElement('small');note.textContent=j.temporary_files_removed?(j.media_trashed?'原音视频已移入废纸篓，临时音轨已清理。':'原音视频与临时音轨已清理。'):'Word 内容未经人工校对。';card.append(note)}let controls=document.createElement('p');controls.className='actions';if(j.state==='failed'||j.state==='login_required'){let retry=document.createElement('button');retry.textContent='重试任务';retry.onclick=async()=>{try{await post('/jobs',{url:j.url,engine:'qianwen'});await refresh()}catch(e){msg.textContent=e.message}};controls.append(retry)}let remove=document.createElement('button');remove.type='button';remove.className='secondary';remove.style.color='#a52222';remove.textContent='删除任务';remove.onclick=async()=>{if(!confirm('删除“'+(j.title||j.id)+'”？将停止该任务，把本机任务文件和相关文稿移入废纸篓。千问云端记录需在千问网页中管理。'))return;remove.disabled=true;try{await requireControls();let r=await post('/delete/'+j.id,{});msg.textContent=r.message;await refresh()}catch(e){msg.textContent='删除失败：'+e.message;remove.disabled=false}};if(j.has_document){card.querySelector('.actions').append(remove)}else{controls.append(remove)}if(controls.children.length)card.append(controls);host.append(card)}await refreshLogin()}catch(e){msg.textContent='后台连接中断，请重新启动工具。'}}
 refresh();setInterval(refresh,6000);
 </script></html>
 
@@ -1101,7 +1145,7 @@ def prepare(args):
     os.environ['SSL_CERT_FILE'] = certifi.where()
     from yt_dlp import YoutubeDL
     from urllib.parse import urlparse
-    if urlparse(args.url).scheme not in ('http', 'https'):
+    if urlparse(args.url).scheme not in ('http', 'https', 'local'):
         raise ValueError('请输入 HTTP 或 HTTPS 网页链接')
     try:
         os.nice(10)
@@ -1136,11 +1180,13 @@ def prepare(args):
                        'outtmpl': str(media_folder / '%(title).60s.%(ext)s'),
                        'merge_output_format': 'mkv', 'retries': 5,
                        'socket_timeout': 30, 'overwrites': False}
-            node = Path(__import__('shutil').which('node') or 'node')
+            node = Path(__import__('shutil').which('node') or '/nonexistent')
             if node.exists():
                 options['js_runtimes'] = {'node': {'path': str(node)}}
             if args.cookies_browser:
                 options['cookiesfrombrowser'] = (args.cookies_browser,)
+            if meta.get('source_kind') == 'local' and (not meta.get('media') or not Path(meta['media']).is_file()):
+                raise ValueError('本地上传文件已不存在，请重新上传')
             if not meta.get('media') or not Path(meta['media']).exists():
                 media_folder.mkdir(parents=True, exist_ok=True)
                 with YoutubeDL(options) as downloader:
@@ -1223,8 +1269,8 @@ def verify_document(path, meta, blocks):
             raise ValueError('Word 文件损坏')
     doc = Document(path)
     texts = [p.text for p in doc.paragraphs]
-    if not texts or texts[0] != meta['url']:
-        raise ValueError('Word 缺少原网页链接')
+    if not texts or texts[0] != (meta.get('source_label') if meta.get('source_kind') == 'local' else meta['url']):
+        raise ValueError('Word 缺少来源信息')
     if NOTICE not in texts:
         raise ValueError('Word 缺少识别准确性提示')
     for block in blocks:
@@ -1233,7 +1279,7 @@ def verify_document(path, meta, blocks):
             raise ValueError('Word 缺少时间戳或发言人标注')
         if block['text'] not in texts:
             raise ValueError('Word 未完整保存语音识别结果')
-    return {'zip_valid': True, 'first_line_url': True, 'notice_present': True,
+    return {'zip_valid': True, 'first_line_url': meta.get('source_kind') != 'local', 'first_line_source': True, 'notice_present': True,
             'all_blocks_present': len(blocks), 'accuracy': '未经人工校对的语音模型识别结果'}
 
 
@@ -1311,7 +1357,10 @@ def build_document(job, raw=None):
     normal.font.name = 'Arial'
     normal.font.size = Pt(11)
     normal.element.rPr.rFonts.set(qn('w:eastAsia'), 'PingFang SC')
-    hyperlink(doc.add_paragraph(), meta['url'])
+    if meta.get('source_kind') == 'local':
+        doc.add_paragraph(meta['source_label'])
+    else:
+        hyperlink(doc.add_paragraph(), meta['url'])
     doc.add_heading(meta['title'], 0)
     notice = doc.add_paragraph().add_run(NOTICE)
     notice.bold = True
@@ -1672,6 +1721,40 @@ class WorkerFailureTests(unittest.TestCase):
             self.assertEqual(run.call_count,2)
             self.assertEqual(fakequeue.task_done.call_count,2)
 
+class LocalUploadTests(unittest.TestCase):
+    def test_rejects_incomplete_upload_without_queuing_or_residue(self):
+        import io
+        with tempfile.TemporaryDirectory() as tmp,patch.object(app,'WORK',Path(tmp)),patch.object(app,'enqueue') as enqueue:
+            with self.assertRaisesRegex(ValueError,'上传中断'):
+                app.receive_upload(io.BytesIO(b'abc'),10,'test.mp3')
+            enqueue.assert_not_called()
+            self.assertFalse(list((Path(tmp)/'jobs').glob('*/job.json')))
+
+    def test_http_upload_streams_file_and_preserves_chinese_name(self):
+        import http.client, threading
+        from urllib.parse import quote
+        from http.server import ThreadingHTTPServer
+        server=ThreadingHTTPServer(('127.0.0.1',0),app.Handler)
+        port=server.server_port
+        with tempfile.TemporaryDirectory() as tmp,patch.object(app,'WORK',Path(tmp)),patch.object(app,'PORT',port),patch.object(app,'enqueue',return_value='123456abcdef') as enqueue:
+            thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+            try:
+                conn=http.client.HTTPConnection('127.0.0.1',port)
+                conn.request('POST','/upload',body=b'example-audio',headers={'Origin':f'http://127.0.0.1:{port}','X-File-Name':quote('采访.mp3'),'Content-Type':'application/octet-stream'})
+                response=conn.getresponse();result=json.loads(response.read());conn.close()
+                self.assertEqual(response.status,200);self.assertEqual(result['id'],'123456abcdef')
+                enqueue.assert_called_once()
+                meta=json.loads(next((Path(tmp)/'jobs').glob('*/job.json')).read_text())
+                self.assertEqual(meta['source_label'],'本地上传文件：采访.mp3')
+                self.assertEqual(Path(meta['media']).read_bytes(),b'example-audio')
+            finally:server.shutdown();server.server_close();thread.join()
+
+    def test_unsupported_file_rejected_before_writing(self):
+        import io
+        with tempfile.TemporaryDirectory() as tmp,patch.object(app,'WORK',Path(tmp)):
+            with self.assertRaises(ValueError):app.receive_upload(io.BytesIO(b'abc'),3,'a.command')
+            self.assertFalse((Path(tmp)/'jobs').exists())
+
 if __name__ == '__main__':
     unittest.main()
 
@@ -1893,6 +1976,24 @@ class PipelineTests(unittest.TestCase):
         self.assertFalse(list(job.glob('checkpoints-*')))
         self.assertFalse((job / 'ChatGPT校对任务.txt').exists())
         self.assertTrue(saved['temporary_files_removed'])
+
+    def test_local_upload_pipeline_preserves_user_original(self):
+        import io, app, shutil
+        original=Path(self.temp.name)/'我的录音.wav'
+        with wave.open(str(original),'wb') as a:
+            a.setnchannels(1);a.setsampwidth(2);a.setframerate(16000);a.writeframes(b'\0'*32000)
+        with patch.object(app,'WORK',self.work),patch.object(app,'enqueue',side_effect=lambda url: __import__('hashlib').sha256(url.encode()).hexdigest()[:12]):
+            ident=app.receive_upload(io.BytesIO(original.read_bytes()),original.stat().st_size,original.name)
+        job=self.work/'jobs'/ident;meta=json.loads((job/'job.json').read_text())
+        raw={'model':'qianwen-web','segments':[{'start':0,'end':1,'speaker':'发言人 1','text':'本地文件全部原文'}]}
+        with patch('qianwen_browser.export_audio',return_value=raw),patch.object(reader,'ffmpeg',return_value='/unused'),patch.object(reader,'extract_audio',side_effect=lambda ff,src,dst:shutil.copy2(src,dst)):
+            reader.prepare(argparse.Namespace(url=meta['url'],cookies_browser=None,engine='qianwen'))
+        saved=json.loads((job/'job.json').read_text());texts=[p.text for p in Document(saved['document']).paragraphs]
+        self.assertEqual(saved['state'],'completed')
+        self.assertEqual(texts[0],'本地上传文件：我的录音.wav')
+        self.assertEqual(Path(saved['document']).name,'我的录音.docx')
+        self.assertIn('[00:00:00–00:00:01] 发言人 1',texts)
+        self.assertTrue(original.exists());self.assertFalse(Path(meta['media']).exists())
 
     def test_speaker_changes_keep_separate_timestamps(self):
         job, meta, audio = self.fixture(4)
@@ -2132,11 +2233,11 @@ exit $result
 ### FILE: 文件校验.json
 ```text
 {
-  "test_reader.py": "44db5108039e4ddc37b71a1aa75a52a7d9259a8787aaa0d14fb8d3f52b517bdb",
+  "test_reader.py": "dcbf181640b381f6d7ab81497b5fc8779ea88ae203dfb4181eb00861aaf044f5",
   "qianwen_browser.py": "1c0d273d18ebe5451362705781360aeea8e6cc68368746de1edc392334483172",
   "测试千问后台流程.command": "365ea7c455b38238341c79e3f2db6531de8053c34a909c4a210a19248a680c8c",
   "smoke_qianwen.py": "5a41ae58b74a8f2edaaadeb36c60235646989c5bdb2aa49e17d72dfd8778f71e",
-  "index.html": "84f8937d61dd91b51b6aca64f6f7adbd090eb6d1110d01e2ad1fa77053fed5f0",
+  "index.html": "a511f38fa6ce431b7214123de14a04c70bab5d9e7b4e5da3a367d9ebb73f11fa",
   "停用自动启动.command": "0c2353cd41fd56b737864d09d6fe83f8b7d62cc1c51757e86fe0bc6bbd76b682",
   "launch_service.py": "2cadb70ee153b678af24a6eb9e911d7e6e2ae4906ca8d3115ff8bb723d516dba",
   "requirements.txt": "8f1f858b32310780d785ef1d196205c8c85a0c44efbb9fe4124bf7e98c9a96d3",
@@ -2144,19 +2245,19 @@ exit $result
   "首次安装.command": "3386934c6c62f0983f9d9ee8541bf0d73a4fa671be319201efa649bf71c28d32",
   "task_controls.py": "a420be2ff8a6b4fc833d126f235e8a249c521e2a8c30435b36ebdf7426579084",
   "test_task_controls.py": "2a0d1da5b7de5a52a5d3c0257dd989341bccf00ba3cda5fd57fe98db25842644",
-  "reader.py": "d4d41b22f5e93ebb1a1f95c4173fa2d0588177d88585310667cb1caafdf3639c",
+  "reader.py": "1b32092e273dcf8847b30c1ab80fc5597d12ff5ca5c69e35172c9cdbe7be406f",
   "切换千问并清理本地模型.command": "39ae5c718d5854f9fec85e13cd2c6fc683cb3c07844dffdd29697f97cfeeaaf4",
   "smoke_qianwen_runner.py": "10c6047ad2b7ae20cac3945b41f8afdc047975fd2da3ef0dc576f3753a512409",
   "cloud_migration.py": "cc5c02b953f404a280f0230e836ff9a5fe04f3e7002361ef9b8b8cdc244c07a0",
   "自动恢复测试.command": "e5f7e855d99cd648d6ae2e1382da651e8afb7597f184e08d1661d6daef5cc7f6",
-  "app.py": "5d159f770f7f14dbc0b4356f88da7ff5238d79f631ade25cb1c15985efc4736c",
+  "app.py": "3a68dc7b10a21d064f8bf6ded132b60778435fb54bcbf68e33da328b5cda6a2d",
   "加载本次更新.command": "ceabb97ebf2b3d7df5568844de02733bc9e09f9c877621985bdaf801a182b978",
   "配置千问登录.command": "3bc9b14516ab4c169b0cd7a9c595778965167f7f7ce533eab5ad7b3abd835fac",
   "install.py": "837ca16dea4cc1b6c258f5effb2eea8953577857a00a4b9b927624aff8a146e8",
   "test_qianwen.py": "0c88e4472bcfdabc026b5e01398f7d55061d3530500884db4cb5078a771a4b38",
   "check_recovery.py": "7fb929eabc113b13551764fe57caa4f72e7f37f6cded04a75c590fe54e1a3d2d",
   "启用自动启动.command": "3475ec88b5c035f49adc0a13b3a14a09255ca19aa600a750051f6a8f1d8a07b6",
-  "test_app.py": "602564153f61b95bf960f153ed5357076f1f07e1b2caac408d811e2b6b114e92"
+  "test_app.py": "fb6d9ea0dd25ad4046c3e2ff83e7b86b997c247c0f9685a591675280f0f5c8ab"
 }
 
 ```

@@ -10,7 +10,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, unquote
 
 from reader import ROOT, WORK, OUTPUT, LEGACY_OUTPUT, NOTICE, save_json, download_url
 
@@ -210,7 +210,9 @@ def open_login():
 def enqueue(url, engine="qianwen"):
     if engine != "qianwen":
         raise ValueError("不支持的语音识别方式")
-    if urlparse(url).scheme not in ('http', 'https') or not urlparse(url).hostname:
+    ident = hashlib.sha256(url.encode()).hexdigest()[:12]
+    local = url.startswith('local://') and (WORK/'jobs'/ident/'job.json').is_file()
+    if not local and (urlparse(url).scheme not in ('http', 'https') or not urlparse(url).hostname):
         raise ValueError('请输入完整的 HTTP/HTTPS 视频页面链接')
     ident = hashlib.sha256(url.encode()).hexdigest()[:12]
     folder = WORK / 'jobs' / ident
@@ -236,9 +238,41 @@ def enqueue(url, engine="qianwen"):
         generation=__import__('uuid').uuid4().hex
         generations[ident]=generation
         tasks.put((ident, url, generation))
-        if not meta.get('title'):
+        if not meta.get('title') and not local:
             start_title_lookup(ident, url)
     return ident
+
+
+MEDIA_EXTENSIONS={'.mp4','.mov','.mkv','.webm','.avi','.wmv','.m4v','.flv','.mp3','.wav','.m4a','.aac','.ogg','.flac','.aiff','.wma','.amr','.mpeg','.mpg','.opus'}
+
+def receive_upload(stream, length, original_name):
+    """Stream a browser-selected file into an isolated task; never move the user's original."""
+    import uuid, shutil
+    from reader import filename
+    name=Path(original_name.replace('\\','/')).name
+    if Path(name).suffix.lower() not in MEDIA_EXTENSIONS:
+        raise ValueError('请选择支持的音频或视频文件')
+    if not 0 < length <= 6_000_000_000:
+        raise ValueError('文件为空或超过 6GB')
+    url='local://'+uuid.uuid4().hex
+    ident=hashlib.sha256(url.encode()).hexdigest()[:12]
+    folder=WORK/'jobs'/ident
+    media=folder/'media';media.mkdir(parents=True)
+    target=media/(filename(Path(name).stem)+Path(name).suffix.lower())
+    try:
+        remaining=length
+        with target.open('wb') as output:
+            while remaining:
+                chunk=stream.read(min(1024*1024,remaining))
+                if not chunk:raise ValueError('文件上传中断，请重新选择并提交')
+                output.write(chunk);remaining-=len(chunk)
+        save_json(folder/'job.json',{'url':url,'source_kind':'local','source_label':'本地上传文件：'+name,
+            'title':Path(name).stem,'name':filename(Path(name).stem),'media':str(target),
+            'state':'queued','engine':'qianwen','created_at':time.time()})
+        return enqueue(url)
+    except Exception:
+        shutil.rmtree(folder,ignore_errors=True)
+        raise
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -261,7 +295,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == '/':
             return self.reply(200, (ROOT / 'index.html').read_bytes(), 'text/html; charset=utf-8')
         if self.path == '/health':
-            return self.reply(200, {'ok': True, 'project': str(ROOT), 'pid': os.getpid(), 'engines': ['qianwen'], 'task_controls': True})
+            return self.reply(200, {'ok': True, 'project': str(ROOT), 'pid': os.getpid(), 'engines': ['qianwen'], 'task_controls': True, 'local_upload': True})
         if self.path == '/qianwen/status':
             return self.reply(200, login_status())
         if self.path == '/jobs':
@@ -289,6 +323,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(403, {'error': '请求来源不符'})
         try:
             length = int(self.headers.get('Content-Length', '0'))
+            if self.path == '/upload':
+                self.connection.settimeout(120)
+                return self.reply(200, {'id': receive_upload(self.rfile,length,unquote(self.headers.get('X-File-Name','')))})
             if not 0 < length <= 5_000_000:
                 raise ValueError('提交内容为空或过大')
             data = json.loads(self.rfile.read(length))

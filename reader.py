@@ -89,7 +89,7 @@ def prepare(args):
     os.environ['SSL_CERT_FILE'] = certifi.where()
     from yt_dlp import YoutubeDL
     from urllib.parse import urlparse
-    if urlparse(args.url).scheme not in ('http', 'https'):
+    if urlparse(args.url).scheme not in ('http', 'https', 'local'):
         raise ValueError('请输入 HTTP 或 HTTPS 网页链接')
     try:
         os.nice(10)
@@ -124,11 +124,13 @@ def prepare(args):
                        'outtmpl': str(media_folder / '%(title).60s.%(ext)s'),
                        'merge_output_format': 'mkv', 'retries': 5,
                        'socket_timeout': 30, 'overwrites': False}
-            node = Path(__import__('shutil').which('node') or 'node')
+            node = Path(__import__('shutil').which('node') or '/nonexistent')
             if node.exists():
                 options['js_runtimes'] = {'node': {'path': str(node)}}
             if args.cookies_browser:
                 options['cookiesfrombrowser'] = (args.cookies_browser,)
+            if meta.get('source_kind') == 'local' and (not meta.get('media') or not Path(meta['media']).is_file()):
+                raise ValueError('本地上传文件已不存在，请重新上传')
             if not meta.get('media') or not Path(meta['media']).exists():
                 media_folder.mkdir(parents=True, exist_ok=True)
                 with YoutubeDL(options) as downloader:
@@ -211,8 +213,8 @@ def verify_document(path, meta, blocks):
             raise ValueError('Word 文件损坏')
     doc = Document(path)
     texts = [p.text for p in doc.paragraphs]
-    if not texts or texts[0] != meta['url']:
-        raise ValueError('Word 缺少原网页链接')
+    if not texts or texts[0] != (meta.get('source_label') if meta.get('source_kind') == 'local' else meta['url']):
+        raise ValueError('Word 缺少来源信息')
     if NOTICE not in texts:
         raise ValueError('Word 缺少识别准确性提示')
     for block in blocks:
@@ -221,7 +223,7 @@ def verify_document(path, meta, blocks):
             raise ValueError('Word 缺少时间戳或发言人标注')
         if block['text'] not in texts:
             raise ValueError('Word 未完整保存语音识别结果')
-    return {'zip_valid': True, 'first_line_url': True, 'notice_present': True,
+    return {'zip_valid': True, 'first_line_url': meta.get('source_kind') != 'local', 'first_line_source': True, 'notice_present': True,
             'all_blocks_present': len(blocks), 'accuracy': '未经人工校对的语音模型识别结果'}
 
 
@@ -299,7 +301,10 @@ def build_document(job, raw=None):
     normal.font.name = 'Arial'
     normal.font.size = Pt(11)
     normal.element.rPr.rFonts.set(qn('w:eastAsia'), 'PingFang SC')
-    hyperlink(doc.add_paragraph(), meta['url'])
+    if meta.get('source_kind') == 'local':
+        doc.add_paragraph(meta['source_label'])
+    else:
+        hyperlink(doc.add_paragraph(), meta['url'])
     doc.add_heading(meta['title'], 0)
     notice = doc.add_paragraph().add_run(NOTICE)
     notice.bold = True
