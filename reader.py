@@ -130,7 +130,7 @@ def prepare(args):
                        'outtmpl': str(media_folder / '%(title).60s.%(ext)s'),
                        'merge_output_format': 'mkv', 'retries': 5,
                        'socket_timeout': 30, 'overwrites': False}
-            node = Path(__import__('shutil').which('node') or '/nonexistent')
+            node = Path('~/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node')
             if node.exists():
                 options['js_runtimes'] = {'node': {'path': str(node)}}
             if args.cookies_browser:
@@ -140,7 +140,14 @@ def prepare(args):
             if not meta.get('media') or not Path(meta['media']).exists():
                 media_folder.mkdir(parents=True, exist_ok=True)
                 with YoutubeDL(options) as downloader:
-                    info = downloader.extract_info(download_url(args.url), download=True)
+                    from bilibili_download import register
+                    register(downloader)
+                    try:
+                        info = downloader.extract_info(download_url(args.url), download=True)
+                    except Exception as error:
+                        if 'No video formats found' in str(error) and 'bilibili.com' in args.url:
+                            raise ValueError('B站未提供可下载的音视频地址，可能需要B站访问验证或登录；尚未上传千问。重复重试不一定有效，可使用本地文件入口。') from error
+                        raise
                     if not info or info.get('_type') in ('playlist', 'multi_video'):
                         raise ValueError('此页面包含多个媒体，请提供具体视频链接')
                     name = filename(info.get('title', '未命名音视频'))
