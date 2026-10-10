@@ -267,7 +267,10 @@ def login_status():
         successes=[item.get('added_at',0) for item in list_jobs() if item.get('state')=='completed' and item.get('model')=='qianwen-web']
         if successes:state['last_success']=max(successes)
     state['window_open']=bool(login_process and login_process.poll() is None)
-    if login_process and login_process.poll() not in (None,0):state['error']='登录窗口未能正常打开，请运行配置千问登录.command检查浏览器环境。'
+    result_path=WORK/'qianwen-login-result.json'
+    if login_process and login_process.poll() not in (None,0):
+        result=json.loads(result_path.read_text(encoding='utf-8')) if result_path.exists() else {}
+        state['error']=result.get('error','千问登录窗口未能打开，请重试；若仍失败请检查登录错误记录。')
     return state
 
 
@@ -275,6 +278,7 @@ def open_login():
     global login_process
     with mutex:
         if login_process and login_process.poll() is None:return {'ok':True,'message':'登录窗口已经打开。'}
+        (WORK/'qianwen-login-result.json').unlink(missing_ok=True)
         with (WORK/'qianwen-login.log').open('ab') as log:
             login_process=subprocess.Popen([str(venv_python(ROOT)),str(ROOT/'qianwen_browser.py'),'login-ui'],
                                            stdin=subprocess.DEVNULL,stdout=log,stderr=log,start_new_session=True)

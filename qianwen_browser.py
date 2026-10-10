@@ -53,11 +53,13 @@ def upload_failure_message(state, message):
     return message
 
 
-def auth_state(status):
+def auth_state(status, error=None):
     from reader import save_json
     path=ROOT/'work/qianwen-auth.json'
     previous=__import__('json').loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     previous.update(status=status,checked_at=time.time())
+    previous.pop('check_error',None)
+    if error:previous['check_error']=str(error)
     if status=='valid':previous['last_success']=time.time()
     save_json(path,previous)
 
@@ -367,7 +369,21 @@ if __name__ == '__main__':
     if args.command=='check-auth':
         try:check_auth()
         except LoginRequired:pass
+        except Exception as error:
+            auth_state('unknown',error)
     elif args.command=='delete':
         if not args.job or not re.fullmatch('[0-9a-f]{12}',args.job):parser.error('任务编号不合法')
         delete_cloud(ROOT/'work/jobs'/args.job)
-    else:login(ui=args.command=='login-ui')
+    else:
+        from reader import save_json
+        result=ROOT/'work/qianwen-login-result.json'
+        save_json(result,{'status':'opening','at':time.time()})
+        try:
+            login(ui=args.command=='login-ui')
+            save_json(result,{'status':'closed','at':time.time()})
+        except Exception as error:
+            message=str(error)
+            if '浏览器正在使用中' in message:
+                message='千问浏览器被更新前启动的任务或登录窗口占用，请等待该任务结束或关闭登录窗口后再试。'
+            save_json(result,{'status':'failed','error':message,'at':time.time()})
+            raise

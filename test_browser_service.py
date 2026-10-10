@@ -18,3 +18,22 @@ class SharedPagesTests(unittest.TestCase):
   from deletion_queue import browser_busy
   with patch('browser_service.endpoint',return_value='ws://localhost/test'):
    self.assertFalse(browser_busy('/unused'))
+
+class LoginDiagnosticsTests(unittest.TestCase):
+ def test_endpoint_explicitly_bypasses_proxy(self):
+  from browser_service import endpoint
+  import json
+  response=Mock();response.__enter__=Mock(return_value=response);response.__exit__=Mock(return_value=False)
+  response.read.return_value=json.dumps({'webSocketDebuggerUrl':'ws://127.0.0.1/test'}).encode()
+  with patch('urllib.request.ProxyHandler') as proxy,patch('urllib.request.build_opener') as opener:
+   opener.return_value.open.return_value=response
+   self.assertEqual(endpoint(),'ws://127.0.0.1/test');proxy.assert_called_once_with({})
+ def test_login_failure_surfaces_actual_busy_reason(self):
+  import app,tempfile,json,time
+  from pathlib import Path
+  with tempfile.TemporaryDirectory() as tmp:
+   work=Path(tmp);(work/'qianwen-auth.json').write_text('{}')
+   (work/'qianwen-login-result.json').write_text(json.dumps({'error':'旧任务占用浏览器'}))
+   process=Mock();process.poll.return_value=1
+   with patch.object(app,'WORK',work),patch.object(app,'login_process',process),patch.object(app,'auth_check_started',time.time()),patch.object(app,'list_jobs',return_value=[]):
+    self.assertEqual(app.login_status()['error'],'旧任务占用浏览器')

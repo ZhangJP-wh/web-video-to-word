@@ -7,7 +7,9 @@ PORT=18769
 def endpoint():
     import urllib.request,json
     try:
-        with urllib.request.urlopen(f'http://127.0.0.1:{PORT}/json/version',timeout=1) as r:
+        # Loopback control traffic must never go through system/environment proxies.
+        opener=urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with opener.open(f'http://127.0.0.1:{PORT}/json/version',timeout=1) as r:
             data=json.load(r)
         return data['webSocketDebuggerUrl']
     except Exception:return None
