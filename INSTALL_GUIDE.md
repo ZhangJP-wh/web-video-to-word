@@ -17,7 +17,7 @@
 
 ## 登录与删除
 
-页面上有蓝色“千问登录”按钮。识别任务检测到登录失效后显示需要重新登录；点击按钮登录、关闭登录窗口，再点击重试。空闲时不保证实时发现过期，也不会主动抢占屏幕。
+页面上有标题旁蓝色“登录千问”按钮。识别任务检测到登录失效后显示需要重新登录；点击按钮登录、关闭登录窗口，再点击重试。空闲时不保证实时发现过期，也不会主动抢占屏幕。
 
 已完成任务的“删除任务”与“查看 Word 文稿”“打开文档所在位置”同排，不再提供重复下载按钮。每条任务的“删除任务”会停止该任务，将相关本机文件、已完成和未完成 Word、任务记录移入废纸篓；千问云端记录自行管理。模型和登录信息不会上传 GitHub。
 
@@ -47,7 +47,7 @@
 
 ## 故障恢复加固
 
-页面加载超时会自动重试，最多3次；复用已经提交的千问任务和保存的文稿链接，不重复上传。登录失效立即提示用户，不自动反复尝试登录。导出菜单等待可见及选项完整后才操作。加载异常保留媒体和页面诊断，文稿验证失败不清理源文件。千问提示云端存储已满时立即停止并保留本机音频；请用户自行清理千问记录后重试，工具不会删除云端记录。自动恢复不能保证第三方改版、网络中断或服务限额永不影响任务。
+页面加载超时会自动重试，最多3次；复用已经提交的千问任务和保存的文稿链接，不重复上传。登录失效立即提示用户，不自动反复尝试登录。导出菜单等待可见及选项完整后才操作。加载异常保留媒体和页面诊断，文稿验证失败不清理源文件。工具会显示千问页面明确可见的错误提示（如上传失败、额度不足、服务异常），保留文件供重试；未明确报错时不推断原因。千问提示云端存储已满时立即停止并保留本机音频；请用户自行清理千问记录后重试，工具不会删除云端记录。自动恢复不能保证第三方改版、网络中断或服务限额永不影响任务。
 
 ## HTTPS 证书
 
@@ -82,7 +82,7 @@
 
 ## 验证说明
 
-本次 33 项测试通过，其中云端识别返回结果在单元测试中模拟；旧本地推理断点测试已移除。此前本机20秒音频的千问后台完整流程约46秒，不能推断长视频速度或识别准确率。未在另一台全新 Mac 完成安装实测。
+本次 35 项测试通过，其中云端识别返回结果在单元测试中模拟；旧本地推理断点测试已移除。此前本机20秒音频的千问后台完整流程约46秒，不能推断长视频速度或识别准确率。未在另一台全新 Mac 完成安装实测。
 
 ## 主要文件
 
@@ -550,24 +550,25 @@ if __name__=='__main__':main()
 <html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>网页视频转语音识别文字稿（由千问提供支持）</title>
 <style>
-body{font:16px/1.7 -apple-system,BlinkMacSystemFont,sans-serif;color:#24322d;background:#f4f6f3;max-width:920px;margin:48px auto;padding:0 24px}h1{font-size:32px}input,button,.action{font:inherit;padding:10px 14px;border:1px solid #c6d1ca;border-radius:8px}input[type=url]{flex:1;min-width:180px}button,.action{background:#245441;color:white;cursor:pointer;text-decoration:none;display:inline-block}form,.actions{display:flex;gap:12px;flex-wrap:wrap}article{background:white;padding:24px;border:1px solid #e0e7e1;border-radius:12px;margin:20px 0}small{color:#62736b}a{color:#245441}#message{color:#8b4520}.notice{background:#fff3cd;color:#9c0006;padding:14px 18px;border-left:4px solid #b07800;font-weight:bold}.secondary{background:white;color:#245441}
+body{font:16px/1.7 -apple-system,BlinkMacSystemFont,sans-serif;color:#24322d;background:#f4f6f3;max-width:920px;margin:48px auto;padding:0 24px}h1{font-size:32px}h1 button{font-size:16px;font-weight:normal;vertical-align:middle;white-space:nowrap}input,button,.action{font:inherit;padding:10px 14px;border:1px solid #c6d1ca;border-radius:8px}input[type=url]{flex:1;min-width:180px}button,.action{background:#245441;color:white;cursor:pointer;text-decoration:none;display:inline-block}form,.actions{display:flex;gap:12px;flex-wrap:wrap}article{background:white;padding:24px;border:1px solid #e0e7e1;border-radius:12px;margin:20px 0}small{color:#62736b}a{color:#245441}#message{color:#8b4520}.notice{background:#fff3cd;color:#9c0006;padding:14px 18px;border-left:4px solid #b07800;font-weight:bold}.secondary{background:white;color:#245441}
 #qianwen-login{background:#004B93;border-color:#004B93}#qianwen-login:hover{background:#003B75}#form button{background:#D65A00;border-color:#D65A00}#form button:hover{background:#B94D00}</style>
-<h1>网页视频转语音识别文字稿（由千问提供支持）</h1>
+<h1>网页视频转语音识别文字稿（由千问提供支持） <button type="button" id="qianwen-login">登录千问</button></h1>
 <p>粘贴网页链接，后台下载并默认交给千问识别语音、区分发言人，生成带时间戳、以视频标题命名的 Word。</p>
 <form id="form" autocomplete="off"><input id="url" autocomplete="off" aria-label="音视频网页链接" type="url" required placeholder="粘贴YouTube、B站、小宇宙等音视频网页链接"><button>开始生成文稿</button></form>
-<p class="actions"><button type="button" id="qianwen-login">千问登录</button><span id="login-status" role="status">正在读取千问登录状态…</span></p><p id="message" role="status"></p>
+<p class="actions"><span id="login-status" role="status">正在读取登录千问状态…</span></p><p id="message" role="status"></p>
 <p class="notice">本文稿内容为语音模型识别结果，需要注意：可能有错别字和识别不准确之处。</p>
-<p><small>Word 保存到“下载/网页视频转语音识别文字稿（由千问提供支持）”。音频将上传千问服务器；需要登录时点击上方“千问登录”。完成后直接查看或打开所在位置。Word 完整性检查通过后自动将原音视频移入废纸篓并清理临时音轨。</small></p>
+<p><small>Word 保存到“下载/网页视频转语音识别文字稿（由千问提供支持）”。音频将上传千问服务器；需要登录时点击上方“登录千问”。完成后直接查看或打开所在位置。Word 完整性检查通过后自动将原音视频移入废纸篓并清理临时音轨。</small></p>
 <div id="jobs"></div>
 <script>
+if(location.port==='8767')location.replace('http://127.0.0.1:8768/');
 const historicalTaskTimes={};
 const stages={queued:'排队中',downloading:'正在下载',downloaded:'下载完成',diarizing:'正在准备千问识别',transcribing:'正在准备千问识别',cloud_preparing:'正在准备上传音频',cloud_transcribing:'等待千问处理结果或加载文稿页面',extracting_audio:'正在提取音频',cloud_connecting:'正在连接千问并检查登录',cloud_uploading:'正在向千问上传音频',cloud_confirming_upload:'等待千问页面确认上传记录（尚未确认成功）',retry_waiting:'页面加载超时，稍后自动重试',generating_document:'正在生成并检查 Word 文稿',cleaning:'Word 已生成，正在清理原音视频和临时文件',cloud_exporting:'正在导出千问原文 Word',completed:'Word 已生成，可以查看',login_required:'需要重新登录千问',failed:'处理失败，进度已保留'};
 const msg=document.querySelector('#message');
 async function requireControls(){let h=await(await fetch('/health')).json();if(!h.task_controls)throw Error('请双击“加载本次更新.command”，让网页服务加载登录和删除功能。')}
 document.querySelector('#qianwen-login').onclick=async()=>{try{await requireControls();let r=await post('/qianwen/login',{});msg.textContent=r.message}catch(e){msg.textContent=e.message}};
-async function refreshLogin(){try{let h=await(await fetch('/health')).json();if(!h.task_controls){document.querySelector('#login-status').textContent='新功能需要加载本次更新';return}let s=await(await fetch('/qianwen/status')).json();let text=s.window_open?'请在千问窗口中完成登录，完成后关闭窗口':s.status==='required'?'千问需要重新登录，请点击左侧按钮':s.last_success?'最近成功转写：'+new Date(s.last_success*1000).toLocaleString()+'；任务中会继续验证登录':'登录状态待验证；首次使用请点击千问登录';document.querySelector('#login-status').textContent=s.error||text}catch(e){document.querySelector('#login-status').textContent='暂时无法读取登录状态'}}
+async function refreshLogin(){try{let h=await(await fetch('/health')).json();if(!h.task_controls){document.querySelector('#login-status').textContent='新功能需要加载本次更新';return}let s=await(await fetch('/qianwen/status')).json();let text=s.window_open?'请在千问窗口中完成登录，完成后关闭窗口':s.status==='required'?'千问需要重新登录，请点击标题旁的“登录千问”按钮':s.last_success?'最近成功转写：'+new Date(s.last_success*1000).toLocaleString()+'；任务中会继续验证登录':'登录状态待验证；首次使用请点击登录千问';document.querySelector('#login-status').textContent=s.error||text}catch(e){document.querySelector('#login-status').textContent='暂时无法读取登录状态'}}
 async function post(url,data){let r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});let j=await r.json();if(!r.ok)throw Error(j.error);return j}
-document.querySelector('#form').onsubmit=async e=>{e.preventDefault();try{if('qianwen'==='qianwen'){let health=await(await fetch('/health')).json();if(!health.engines?.includes('qianwen'))throw Error('网页服务需要加载新版。请完成千问登录配置后再试。')}await post('/jobs',{url:document.querySelector('#url').value,engine:'qianwen'});document.querySelector('#url').value='';msg.textContent='已加入后台队列。你可以继续做其他事情，稍后回来查看文稿。';await refresh()}catch(e){msg.textContent=e.message}};
+document.querySelector('#form').onsubmit=async e=>{e.preventDefault();try{if('qianwen'==='qianwen'){let health=await(await fetch('/health')).json();if(!health.engines?.includes('qianwen'))throw Error('网页服务需要加载新版。请完成登录千问配置后再试。')}await post('/jobs',{url:document.querySelector('#url').value,engine:'qianwen'});document.querySelector('#url').value='';msg.textContent='已加入后台队列。你可以继续做其他事情，稍后回来查看文稿。';await refresh()}catch(e){msg.textContent=e.message}};
 function taskHeading(j){let title=j.title;if(j.state==='queued')return '待处理 · '+(title||'正在获取标题（'+new URL(j.url).hostname+' / '+(new URL(j.url).searchParams.get('v')||new URL(j.url).pathname.split('/').filter(Boolean).pop()||j.id)+'）');return title||'正在获取标题 · '+j.id}
 function link(text,url,style){let a=document.createElement('a');a.textContent=text;a.href=url;if(style)a.className=style;return a}
 async function refresh(){try{let jobs=await(await fetch('/jobs')).json();jobs.sort((a,b)=>(b.created_at??historicalTaskTimes[b.id]??b.added_at??Infinity)-(a.created_at??historicalTaskTimes[a.id]??a.added_at??Infinity));let host=document.querySelector('#jobs');host.replaceChildren();for(let j of jobs){let card=document.createElement('article');let h=document.createElement('h2');h.textContent=taskHeading(j);card.append(h);let p=document.createElement('p');p.textContent=(j.document&&!j.has_document)?'Word 文件已不在原保存位置，重新提交链接可生成':(stages[j.state]||'状态暂未识别：'+String(j.state));card.append(p);card.append(link('原网页',j.url));if(j.error){let err=document.createElement('p');err.textContent=j.error;card.append(err)}if(j.cleanup_error){let note=document.createElement('p');note.textContent='Word 已生成，但部分临时文件未清理：'+j.cleanup_error;card.append(note)}if(j.has_document){let actions=document.createElement('p');actions.className='actions';actions.append(link('查看 Word 文稿','/preview/'+j.id,'action'));let reveal=document.createElement('button');reveal.type='button';reveal.className='secondary';reveal.textContent='打开文档所在位置';let revealStatus=document.createElement('small');revealStatus.setAttribute('role','status');reveal.onclick=async()=>{reveal.disabled=true;revealStatus.textContent='正在打开文件夹…';try{await post('/reveal/'+j.id,{});revealStatus.textContent='已打开 Finder 文件夹。';msg.textContent='已打开文档所在的 Finder 文件夹。'}catch(e){revealStatus.textContent='打开失败：'+e.message;msg.textContent='打开失败：'+e.message}finally{reveal.disabled=false}};actions.append(reveal);actions.append(revealStatus);card.append(actions);let note=document.createElement('small');note.textContent=j.temporary_files_removed?(j.media_trashed?'原音视频已移入废纸篓，临时音轨已清理。':'原音视频与临时音轨已清理。'):'Word 内容未经人工校对。';card.append(note)}let controls=document.createElement('p');controls.className='actions';if(j.state==='failed'||j.state==='login_required'){let retry=document.createElement('button');retry.textContent='重试任务';retry.onclick=async()=>{try{await post('/jobs',{url:j.url,engine:'qianwen'});await refresh()}catch(e){msg.textContent=e.message}};controls.append(retry)}let remove=document.createElement('button');remove.type='button';remove.className='secondary';remove.style.color='#a52222';remove.textContent='删除任务';remove.onclick=async()=>{if(!confirm('删除“'+(j.title||j.id)+'”？将停止该任务，把本机任务文件和相关文稿移入废纸篓。千问云端记录需在千问网页中管理。'))return;remove.disabled=true;try{await requireControls();let r=await post('/delete/'+j.id,{});msg.textContent=r.message;await refresh()}catch(e){msg.textContent='删除失败：'+e.message;remove.disabled=false}};if(j.has_document){card.querySelector('.actions').append(remove)}else{controls.append(remove)}if(controls.children.length)card.append(controls);host.append(card)}await refreshLogin()}catch(e){msg.textContent='后台连接中断，请重新启动工具。'}}
@@ -806,12 +807,24 @@ def require_login_if_visible(page):
     for prompt in prompts.all():
         if prompt.is_visible():
             auth_state('required')
-            raise LoginRequired('千问需要重新登录或完成验证。请点击页面上的“千问登录”，完成后重试任务。')
+            raise LoginRequired('千问需要重新登录或完成验证。请点击页面上的“登录千问”，完成后重试任务。')
     buttons=[button for name in ('登录','登录/注册','立即登录')
              for button in page.get_by_role('button',name=name,exact=True).all()]
     if any(button.is_visible() for button in buttons):
         auth_state('required')
-        raise LoginRequired('千问登录已失效，请点击“千问登录”重新登录后重试。')
+        raise LoginRequired('千问登录已失效，请点击“登录千问”重新登录后重试。')
+
+
+def require_cloud_available(page):
+    """Surface explicit visible errors, without interpreting transcript text as errors."""
+    messages=[]
+    for alert in page.get_by_role('alert').all():
+        if alert.is_visible():
+            text=alert.inner_text().strip()
+            if re.search('失败|出错|错误|异常|已满|超限|不足|重试|限制|不可用',text):
+                messages.append(text)
+    if messages:
+        raise RuntimeError('千问页面提示：'+'；'.join(messages)+'。本机文件已保留，请处理后重试。')
 
 
 @contextmanager
@@ -879,6 +892,7 @@ def confirm_submission(page,title,job,meta,save,timeout=120000):
                 meta.update(qianwen_submission_attempted=False,qianwen_submitted=False,qianwen_upload_confirmed=False)
                 save(job/'job.json',meta)
                 raise RuntimeError('千问账号云端存储已满，请在千问中自行删除不需要的记录后重试。本机音频已保留；工具不会删除云端记录。')
+            require_cloud_available(page)
             meta['last_browser_check']=time.time();save(job/'job.json',meta)
     raise RuntimeError('千问页面未出现本次上传记录，尚未确认上传成功。已保留音频，请诊断后重试；不会重复自动上传。')
 
@@ -929,6 +943,7 @@ def export_audio(audio, job, meta, save):
                 deadline = time.monotonic() + 6 * 3600
                 while time.monotonic() < deadline:
                     require_login_if_visible(page)
+                    require_cloud_available(page)
                     from playwright.sync_api import TimeoutError as BrowserTimeout
                     try:
                         if '/efficiency/doc/transcripts/' not in page.url:
@@ -950,6 +965,7 @@ def export_audio(audio, job, meta, save):
             page.get_by_role('button', name='导出', exact=True).wait_for(timeout=60000)
             page.screenshot(path=str(job/'browser-diagnostic.png'), full_page=True)
             (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
+            require_cloud_available(page)
             page.get_by_role('button', name='导出', exact=True).click()
             panel,checks=export_panel(page,job)
             checks.nth(0).check()
@@ -1781,6 +1797,25 @@ class UploadConfirmationTests(unittest.TestCase):
         self.assertFalse(meta['qianwen_submission_attempted'])
         page.get_by_text.return_value.filter.return_value.first.wait_for.assert_called_once()
 
+class CloudErrorTests(unittest.TestCase):
+    def test_visible_cloud_error_is_preserved(self):
+        from unittest.mock import MagicMock
+        from qianwen_browser import require_cloud_available
+        page=MagicMock();alert=MagicMock()
+        alert.is_visible.return_value=True;alert.inner_text.return_value='上传失败，请稍后重试'
+        page.get_by_role.return_value.all.return_value=[alert]
+        with self.assertRaisesRegex(RuntimeError,'上传失败，请稍后重试'):
+            require_cloud_available(page)
+
+    def test_success_or_hidden_alert_does_not_fail_task(self):
+        from unittest.mock import MagicMock
+        from qianwen_browser import require_cloud_available
+        page=MagicMock();success=MagicMock();hidden=MagicMock()
+        success.is_visible.return_value=True;success.inner_text.return_value='任务添加成功'
+        hidden.is_visible.return_value=False;hidden.inner_text.return_value='上传失败'
+        page.get_by_role.return_value.all.return_value=[success,hidden]
+        require_cloud_available(page)
+
 if __name__=='__main__':unittest.main()
 
 ```
@@ -2098,10 +2133,10 @@ exit $result
 ```text
 {
   "test_reader.py": "44db5108039e4ddc37b71a1aa75a52a7d9259a8787aaa0d14fb8d3f52b517bdb",
-  "qianwen_browser.py": "3bb869a22ef027895843a88483dbff0b53d683dc62dc41f1fd5432537e7c731f",
+  "qianwen_browser.py": "1c0d273d18ebe5451362705781360aeea8e6cc68368746de1edc392334483172",
   "测试千问后台流程.command": "365ea7c455b38238341c79e3f2db6531de8053c34a909c4a210a19248a680c8c",
   "smoke_qianwen.py": "5a41ae58b74a8f2edaaadeb36c60235646989c5bdb2aa49e17d72dfd8778f71e",
-  "index.html": "c08bc216839f6f4e340af83ff3aa4e3969d033658155e192d3e1b5b05c3aa354",
+  "index.html": "813cbd9f9b8dbccbd1e8c63d3b7170a34082ad7bbdb94d01ad815d8f023b8cba",
   "停用自动启动.command": "0c2353cd41fd56b737864d09d6fe83f8b7d62cc1c51757e86fe0bc6bbd76b682",
   "launch_service.py": "2cadb70ee153b678af24a6eb9e911d7e6e2ae4906ca8d3115ff8bb723d516dba",
   "requirements.txt": "8f1f858b32310780d785ef1d196205c8c85a0c44efbb9fe4124bf7e98c9a96d3",
@@ -2118,7 +2153,7 @@ exit $result
   "加载本次更新.command": "ceabb97ebf2b3d7df5568844de02733bc9e09f9c877621985bdaf801a182b978",
   "配置千问登录.command": "3bc9b14516ab4c169b0cd7a9c595778965167f7f7ce533eab5ad7b3abd835fac",
   "install.py": "837ca16dea4cc1b6c258f5effb2eea8953577857a00a4b9b927624aff8a146e8",
-  "test_qianwen.py": "7b8c1ecf5a9060993d18d3f62c8d7cd171697cb3d8574a2a469b3f11f1a06740",
+  "test_qianwen.py": "0c88e4472bcfdabc026b5e01398f7d55061d3530500884db4cb5078a771a4b38",
   "check_recovery.py": "7fb929eabc113b13551764fe57caa4f72e7f37f6cded04a75c590fe54e1a3d2d",
   "启用自动启动.command": "3475ec88b5c035f49adc0a13b3a14a09255ca19aa600a750051f6a8f1d8a07b6",
   "test_app.py": "602564153f61b95bf960f153ed5357076f1f07e1b2caac408d811e2b6b114e92"

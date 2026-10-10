@@ -116,4 +116,23 @@ class UploadConfirmationTests(unittest.TestCase):
         self.assertFalse(meta['qianwen_submission_attempted'])
         page.get_by_text.return_value.filter.return_value.first.wait_for.assert_called_once()
 
+class CloudErrorTests(unittest.TestCase):
+    def test_visible_cloud_error_is_preserved(self):
+        from unittest.mock import MagicMock
+        from qianwen_browser import require_cloud_available
+        page=MagicMock();alert=MagicMock()
+        alert.is_visible.return_value=True;alert.inner_text.return_value='上传失败，请稍后重试'
+        page.get_by_role.return_value.all.return_value=[alert]
+        with self.assertRaisesRegex(RuntimeError,'上传失败，请稍后重试'):
+            require_cloud_available(page)
+
+    def test_success_or_hidden_alert_does_not_fail_task(self):
+        from unittest.mock import MagicMock
+        from qianwen_browser import require_cloud_available
+        page=MagicMock();success=MagicMock();hidden=MagicMock()
+        success.is_visible.return_value=True;success.inner_text.return_value='任务添加成功'
+        hidden.is_visible.return_value=False;hidden.inner_text.return_value='上传失败'
+        page.get_by_role.return_value.all.return_value=[success,hidden]
+        require_cloud_available(page)
+
 if __name__=='__main__':unittest.main()

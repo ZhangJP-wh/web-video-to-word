@@ -59,12 +59,24 @@ def require_login_if_visible(page):
     for prompt in prompts.all():
         if prompt.is_visible():
             auth_state('required')
-            raise LoginRequired('千问需要重新登录或完成验证。请点击页面上的“千问登录”，完成后重试任务。')
+            raise LoginRequired('千问需要重新登录或完成验证。请点击页面上的“登录千问”，完成后重试任务。')
     buttons=[button for name in ('登录','登录/注册','立即登录')
              for button in page.get_by_role('button',name=name,exact=True).all()]
     if any(button.is_visible() for button in buttons):
         auth_state('required')
-        raise LoginRequired('千问登录已失效，请点击“千问登录”重新登录后重试。')
+        raise LoginRequired('千问登录已失效，请点击“登录千问”重新登录后重试。')
+
+
+def require_cloud_available(page):
+    """Surface explicit visible errors, without interpreting transcript text as errors."""
+    messages=[]
+    for alert in page.get_by_role('alert').all():
+        if alert.is_visible():
+            text=alert.inner_text().strip()
+            if re.search('失败|出错|错误|异常|已满|超限|不足|重试|限制|不可用',text):
+                messages.append(text)
+    if messages:
+        raise RuntimeError('千问页面提示：'+'；'.join(messages)+'。本机文件已保留，请处理后重试。')
 
 
 @contextmanager
@@ -132,6 +144,7 @@ def confirm_submission(page,title,job,meta,save,timeout=120000):
                 meta.update(qianwen_submission_attempted=False,qianwen_submitted=False,qianwen_upload_confirmed=False)
                 save(job/'job.json',meta)
                 raise RuntimeError('千问账号云端存储已满，请在千问中自行删除不需要的记录后重试。本机音频已保留；工具不会删除云端记录。')
+            require_cloud_available(page)
             meta['last_browser_check']=time.time();save(job/'job.json',meta)
     raise RuntimeError('千问页面未出现本次上传记录，尚未确认上传成功。已保留音频，请诊断后重试；不会重复自动上传。')
 
@@ -182,6 +195,7 @@ def export_audio(audio, job, meta, save):
                 deadline = time.monotonic() + 6 * 3600
                 while time.monotonic() < deadline:
                     require_login_if_visible(page)
+                    require_cloud_available(page)
                     from playwright.sync_api import TimeoutError as BrowserTimeout
                     try:
                         if '/efficiency/doc/transcripts/' not in page.url:
@@ -203,6 +217,7 @@ def export_audio(audio, job, meta, save):
             page.get_by_role('button', name='导出', exact=True).wait_for(timeout=60000)
             page.screenshot(path=str(job/'browser-diagnostic.png'), full_page=True)
             (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
+            require_cloud_available(page)
             page.get_by_role('button', name='导出', exact=True).click()
             panel,checks=export_panel(page,job)
             checks.nth(0).check()
