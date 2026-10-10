@@ -193,6 +193,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(403, {'error': '仅允许本机访问'})
         if self.path == '/':
             return self.reply(200, (ROOT / 'index.html').read_bytes(), 'text/html; charset=utf-8')
+        if self.path == '/health':
+            return self.reply(200, {'ok': True, 'project': str(ROOT), 'pid': os.getpid()})
         if self.path == '/jobs':
             return self.reply(200, list_jobs())
         match = re.fullmatch(r'/(document|preview)/([0-9a-f]{12})', self.path)

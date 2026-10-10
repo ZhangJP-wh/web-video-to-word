@@ -124,7 +124,7 @@ cd "$HOME/VideoTranscript"
 .venv/bin/python -m unittest test_reader test_app -q
 ```
 
-pip check 应显示 No broken requirements found；单元测试应显示 OK。当前分享版有 9 项测试，其中 ASR 使用模拟结果，验证文档生成、时间戳与发言人写入、失败保护和页面功能。它们不是模型听写准确率测试，也不是真实网站下载测试。
+pip check 应显示 No broken requirements found；单元测试应显示 OK。当前分享版有 10 项测试，其中 ASR 使用模拟结果，验证文档生成、时间戳与发言人写入、失败保护和页面功能。它们不是模型听写准确率测试，也不是真实网站下载测试。
 
 ### 6.2 不依赖视频网站登录的短音频实测
 
@@ -159,11 +159,33 @@ curl --fail --location 'https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen3-AS
 
 不要一次盲目升级所有模型依赖；qwen-asr 0.0.6 与 transformers 4.57.6 是本指南的兼容组合。要升级，先保留现有环境，单独测试新版。
 
-停止后台服务：先确认没有下载或识别任务在运行。Agent 可运行 lsof -nP -iTCP:8767 -sTCP:LISTEN，确认该 PID 的命令路径确实是自己的 VideoTranscript/app.py，再只停止该进程。不要使用 killall Python；它会影响其他程序。电脑重启后默认需重新双击启动工具。
+停止后台服务：若已启用自动启动，按第 7.1 节双击“停用自动启动.command”；直接结束主服务会被 macOS 重启。若是手动启动的副本，先确认任务状态与进程归属，不使用 killall Python。
 
 备份：Word 在下载目录，工作记录与可恢复识别 JSON 在项目 work/jobs，模型在 work/model-cache。备份前等待任务完成。如果仅分享工具，不分享这些工作记录和模型缓存。
 
-卸载：确认没有运行任务并停止本工具后，把 VideoTranscript 文件夹移入废纸篓。输出 Word 文件夹是独立的，想保留就不要删除。Python 和 Node 可能被其他软件使用，不要因为卸载本工具就自动卸载它们。
+卸载：先停用自动启动，并确认识别子进程已完成后，把 VideoTranscript 文件夹移入废纸篓。输出 Word 文件夹是独立的，想保留就不要删除。Python 和 Node 可能被其他软件使用，不要因为卸载本工具就自动卸载它们。
+
+
+### 7.1 登录自动启动与异常恢复
+
+可选：首次安装完成后，双击“启用自动启动.command”。它注册当前用户的 macOS LaunchAgent，不需要管理员密码。成功时显示“自动启动与自动恢复已启用”。只在本机 127.0.0.1 上提供页面；不会自动打开浏览器或抢占屏幕。当前用户登录后启动，服务意外退出时由 launchd 重启，通常需要等待约 10 秒。未登录、关机和休眠时无法保证处理或访问。
+
+启动项路径为 ~/Library/LaunchAgents/com.zhangjp.web-video-to-word.plist，后台日志是项目 work/service.log。程序需要一直保留在安装目录；移动或删除目录会导致启动项失效。macOS 若询问后台项目、文件访问或授权，请本人核查并按系统提示处理。
+
+恢复顺序按原添加时间，已完成与明确失败的任务不会自动重跑。未完成任务从已保存的识别检查点继续，最后尚未保存的片段可能重算；下载组件是否续传取决于网站。服务重启时保留已有识别子进程并等待它释放文件锁，避免同一任务重复识别。
+
+暂停、更新或卸载前：双击“停用自动启动.command”，它卸载本工具启动项；文稿、模型和任务记录保留。已经在运行的识别子进程会继续处理，不会因为关闭网页服务而被强行结束。更新程序应等待识别任务完成，再修改依赖；更新后重新双击“启用自动启动.command”。若自动启动未启用，原来的“启动工具.command”仍可手动启动。
+
+Agent 可执行：
+
+```sh
+cd "$HOME/VideoTranscript"
+.venv/bin/python launch_service.py install --port 8767
+.venv/bin/python launch_service.py status
+curl --fail http://127.0.0.1:8767/health
+```
+
+status 应显示启动项加载并运行；health 应返回 ok=true 且 project 是本项目目录。若 Agent 受权限限制，必须由用户从 Finder 双击设置文件；安装脚本检查失败不等于已经启用。测试意外恢复时，只针对已确认归属的本工具 launchd 主服务发送 SIGTERM，确认新的 PID 与页面恢复，不能结束 reader.py 识别进程。未完成任务恢复的单元测试使用临时任务目录，不是完整重启电脑的实测。
 
 ## 8. 常见问题及排查
 
@@ -225,7 +247,7 @@ cd "$HOME/VideoTranscript"
 python3.12 install.py
 ```
 
-成功条件：pip check 通过，9 项单元测试 OK，prefetch_model.py 完成、模型路径存在、声纹模型可加载、FFmpeg 路径可执行。安装中不要自动清空共享 Hugging Face 缓存，也不要同时下载其他 ASR 大模型。下载失败与真实推理失败分别记录。
+成功条件：pip check 通过，10 项单元测试 OK，prefetch_model.py 完成、模型路径存在、声纹模型可加载、FFmpeg 路径可执行。安装中不要自动清空共享 Hugging Face 缓存，也不要同时下载其他 ASR 大模型。下载失败与真实推理失败分别记录。
 
 模型主要约 4.4GB，断点下载与解压期间可能需要额外空间。当前安装脚本是幂等的基本安装流程，不是已签名的 macOS App 安装器。重复安装不会自动删除工作记录，但也不保证跨依赖大版本更新完全可复现。
 
@@ -497,6 +519,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(403, {'error': '仅允许本机访问'})
         if self.path == '/':
             return self.reply(200, (ROOT / 'index.html').read_bytes(), 'text/html; charset=utf-8')
+        if self.path == '/health':
+            return self.reply(200, {'ok': True, 'project': str(ROOT), 'pid': os.getpid()})
         if self.path == '/jobs':
             return self.reply(200, list_jobs())
         match = re.fullmatch(r'/(document|preview)/([0-9a-f]{12})', self.path)
@@ -1090,6 +1114,7 @@ torch>=2.6,<3
 ```python
 import json
 import tempfile
+import queue
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -1161,6 +1186,21 @@ class PageTests(unittest.TestCase):
                 app.fetch_title(job.name, meta['url'])
             self.assertEqual(json.loads((job / 'job.json').read_text()), meta)
             self.assertEqual(json.loads((job / 'page-title.json').read_text())['title'], '对话标题')
+
+    def test_restart_recovers_only_unfinished_in_original_order(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for ident, state, created in [('000000000001','queued',3), ('000000000002','transcribing',1),
+                                           ('000000000003','completed',2), ('000000000004','failed',4)]:
+                folder = root / 'jobs' / ident
+                folder.mkdir(parents=True)
+                (folder/'job.json').write_text(json.dumps({'state':state,'created_at':created,'url':'https://example.com/'+ident}))
+            restored = queue.Queue()
+            with patch.object(app,'WORK',root), patch.object(app,'tasks',restored), patch.object(app,'pending',set()), patch('app.start_title_lookup'):
+                app.resume_jobs()
+                self.assertEqual(restored.get_nowait()[0], '000000000002')
+                self.assertEqual(restored.get_nowait()[0], '000000000001')
+                self.assertTrue(restored.empty())
 
 
 if __name__ == '__main__':
@@ -1321,15 +1361,18 @@ print '确认页面能打开后，这个终端窗口可以关闭。'
 ### FILE: 文件校验.json
 ```json
 {
-  "app.py": "bdb11cb05ed1cd4466ffcd84aa9de7a037cd54a7ef9ee571fae418e358a56ecf",
+  "app.py": "1460585eb00541738a8c8b32a1b60f908e77091b4bfa19734b7c42e665ef340a",
   "index.html": "778754984ab08de8e9a3e258265d23793114a2f5fe4f188c10b1b627731d57fa",
   "install.py": "d423b71bfd29145b2b6616da4b6474ad86beec07813eb8c9c36330ed298f19bb",
+  "launch_service.py": "2cadb70ee153b678af24a6eb9e911d7e6e2ae4906ca8d3115ff8bb723d516dba",
   "prefetch_model.py": "1c7512114bdb7d49b6a2d8a4199452f5291ad4c04fc4effa4e329b4dab227df3",
   "reader.py": "6847c329c06126638b7de798df74b2c7f5c0a15de0e59185f50d902efeada13f",
   "requirements.txt": "aa237150a51d1f468ccab935e7ccd3235beddaf60afb9719676dc7f8fbf63e7c",
-  "test_app.py": "3bb5c3f39a4d7c0782a0a7a970e5580bc69d8204c3170468a166a2d556f84737",
+  "test_app.py": "911650ca1bd12c3e87ce499ed1d6bfea8882d8d04ac9e357bb98c067853befc9",
   "test_reader.py": "ea7af8f55bfe4c47023ee9f712b6b078cfc9dd0beedec2325134556970fdc059",
+  "停用自动启动.command": "0c2353cd41fd56b737864d09d6fe83f8b7d62cc1c51757e86fe0bc6bbd76b682",
   "启动工具.command": "f67940511e7be84f96ef4eadc60dee14b08668d185f06f94cd03a02ebd3d59ca",
+  "启用自动启动.command": "3475ec88b5c035f49adc0a13b3a14a09255ca19aa600a750051f6a8f1d8a07b6",
   "首次安装.command": "3386934c6c62f0983f9d9ee8541bf0d73a4fa671be319201efa649bf71c28d32"
 }
 
@@ -1352,3 +1395,163 @@ exit $result
 
 ```
 
+
+### FILE: launch_service.py
+```python
+"""Manage a per-user launchd service; no administrator privileges required."""
+import argparse
+import json
+import os
+import plistlib
+import signal
+import subprocess
+import time
+import urllib.request
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+LABEL = 'com.zhangjp.web-video-to-word'
+
+
+def configuration(root, port):
+    root = Path(root).resolve()
+    return {'Label': LABEL, 'ProgramArguments': [str(root / '.venv/bin/python'), str(root / 'app.py')],
+            'WorkingDirectory': str(root), 'RunAtLoad': True, 'KeepAlive': True,
+            'ThrottleInterval': 10, 'AbandonProcessGroup': True,
+            'EnvironmentVariables': {'VIDEO_READER_PORT': str(port),
+                'PATH': '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
+                'PYTHONUNBUFFERED': '1'},
+            'StandardOutPath': str(root / 'work/service.log'),
+            'StandardErrorPath': str(root / 'work/service.log')}
+
+
+def launchctl(*args, check=True):
+    result = subprocess.run(['/bin/launchctl', *args], capture_output=True, text=True)
+    if check and result.returncode:
+        raise RuntimeError(result.stderr.strip() or result.stdout.strip() or 'launchctl 操作失败')
+    return result
+
+
+def stop_standalone(port):
+    """Only stop a listener whose executable arguments and cwd match this project."""
+    result = subprocess.run(['/usr/sbin/lsof', '-t', f'-iTCP:{port}', '-sTCP:LISTEN'], capture_output=True, text=True)
+    for pid in set(result.stdout.split()):
+        cwd = subprocess.run(['/usr/sbin/lsof', '-a', '-p', pid, '-d', 'cwd', '-Fn'], capture_output=True, text=True).stdout
+        try:
+            command = subprocess.run(['/bin/ps', '-p', pid, '-o', 'command='], capture_output=True, text=True).stdout
+            matching = str(ROOT / 'app.py') in command
+        except OSError:
+            with urllib.request.urlopen(f'http://127.0.0.1:{port}/', timeout=2) as response:
+                matching = response.read() == (ROOT / 'index.html').read_bytes()
+        if 'n' + str(ROOT) + '\n' not in cwd or not matching:
+            raise RuntimeError(f'端口 {port} 的进程身份无法确认为本工具，未关闭该进程。')
+        os.kill(int(pid), signal.SIGTERM)
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        r = subprocess.run(['/usr/sbin/lsof', '-t', f'-iTCP:{port}', '-sTCP:LISTEN'], capture_output=True, text=True)
+        if not r.stdout.strip():
+            return
+        time.sleep(.25)
+    raise RuntimeError('旧网页服务尚未退出，未继续安装。')
+
+
+def install(port):
+    if not (ROOT / '.venv/bin/python').is_file():
+        raise RuntimeError('请先完成首次安装。')
+    folder = Path.home() / 'Library/LaunchAgents'
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / (LABEL + '.plist')
+    config = configuration(ROOT, port)
+    if path.exists():
+        previous = plistlib.loads(path.read_bytes())
+        if previous.get('WorkingDirectory') != str(ROOT):
+            raise RuntimeError('已有另一份工具的同名启动项，请先核查，不自动覆盖。')
+    domain = f'gui/{os.getuid()}'
+    target = domain + '/' + LABEL
+    (ROOT / 'work').mkdir(exist_ok=True)
+    if launchctl('print', target, check=False).returncode == 0:
+        if path.exists() and plistlib.loads(path.read_bytes()) == config:
+            launchctl('kickstart', target)
+            print(f'自动启动服务已配置：http://127.0.0.1:{port}/')
+            return
+        launchctl('bootout', target)
+    stop_standalone(port)
+    path.write_bytes(plistlib.dumps(config))
+    path.chmod(0o644)
+    launchctl('enable', target)
+    try:
+        launchctl('bootstrap', domain, str(path))
+    except RuntimeError:
+        env = os.environ.copy()
+        env['VIDEO_READER_PORT'] = str(port)
+        with (ROOT / 'work/service.log').open('ab') as log:
+            subprocess.Popen(config['ProgramArguments'], cwd=ROOT, env=env,
+                             stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
+        raise
+    deadline = time.monotonic() + 25
+    while time.monotonic() < deadline:
+        try:
+            with urllib.request.urlopen(f'http://127.0.0.1:{port}/health', timeout=2) as response:
+                health = json.load(response)
+            if health.get('project') == str(ROOT):
+                print(f'自动启动与自动恢复已启用：http://127.0.0.1:{port}/')
+                return
+        except (OSError, ValueError):
+            pass
+        time.sleep(.5)
+    raise RuntimeError('启动项已安装，但服务未通过健康检查；请查看 work/service.log。')
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('action', choices=['install', 'status', 'uninstall'])
+    parser.add_argument('--port', type=int, default=8767)
+    args = parser.parse_args()
+    if not 1024 <= args.port <= 65535:
+        parser.error('端口应在 1024～65535 之间')
+    target = f'gui/{os.getuid()}/{LABEL}'
+    if args.action == 'install':
+        install(args.port)
+    elif args.action == 'status':
+        result = launchctl('print', target, check=False)
+        print(result.stdout or '本工具自动启动项未加载。')
+    else:
+        path = Path.home() / 'Library/LaunchAgents' / (LABEL + '.plist')
+        if path.exists():
+            config = plistlib.loads(path.read_bytes())
+            if config.get('WorkingDirectory') != str(ROOT):
+                raise RuntimeError('启动项属于其他副本，未删除。')
+            launchctl('bootout', target, check=False)
+            path.unlink()
+        print('已停用本工具的自动启动；Word 和任务记录均保留。')
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+        raise SystemExit(f'未完成：{error}。若系统限制操作，请从 Finder 双击自动启动设置文件。')
+
+```
+
+### FILE: 停用自动启动.command
+```sh
+#!/bin/zsh
+cd "${0:A:h}" || exit 1
+.venv/bin/python launch_service.py uninstall --port 8767
+result=$?
+read 'reply?按回车关闭窗口。'
+exit $result
+
+```
+
+### FILE: 启用自动启动.command
+```sh
+#!/bin/zsh
+cd "${0:A:h}" || exit 1
+.venv/bin/python launch_service.py install --port 8767
+result=$?
+read 'reply?按回车关闭窗口。'
+exit $result
+
+```

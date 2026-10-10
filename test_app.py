@@ -1,5 +1,6 @@
 import json
 import tempfile
+import queue
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -71,6 +72,21 @@ class PageTests(unittest.TestCase):
                 app.fetch_title(job.name, meta['url'])
             self.assertEqual(json.loads((job / 'job.json').read_text()), meta)
             self.assertEqual(json.loads((job / 'page-title.json').read_text())['title'], '对话标题')
+
+    def test_restart_recovers_only_unfinished_in_original_order(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for ident, state, created in [('000000000001','queued',3), ('000000000002','transcribing',1),
+                                           ('000000000003','completed',2), ('000000000004','failed',4)]:
+                folder = root / 'jobs' / ident
+                folder.mkdir(parents=True)
+                (folder/'job.json').write_text(json.dumps({'state':state,'created_at':created,'url':'https://example.com/'+ident}))
+            restored = queue.Queue()
+            with patch.object(app,'WORK',root), patch.object(app,'tasks',restored), patch.object(app,'pending',set()), patch('app.start_title_lookup'):
+                app.resume_jobs()
+                self.assertEqual(restored.get_nowait()[0], '000000000002')
+                self.assertEqual(restored.get_nowait()[0], '000000000001')
+                self.assertTrue(restored.empty())
 
 
 if __name__ == '__main__':
