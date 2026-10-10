@@ -143,6 +143,20 @@ class LocalUploadTests(unittest.TestCase):
             self.assertFalse((Path(tmp)/'jobs').exists())
 
 class SynchronizedDeleteTests(unittest.TestCase):
+    def test_successful_delete_removes_task_from_list(self):
+        import shutil
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as tmp:
+            work=Path(tmp);folder=work/'jobs/123456abcdef';folder.mkdir(parents=True)
+            (folder/'job.json').write_text(json.dumps({'state':'completed','created_at':1}))
+            def trash(root,work,outputs,ident):
+                shutil.rmtree(work/'jobs'/ident)
+                return {'ok':True}
+            with patch.object(app,'WORK',work),patch('task_controls.reader_pids',return_value=[]),patch('task_controls.trash_task',side_effect=trash),patch('app.subprocess.run',return_value=SimpleNamespace(returncode=0)):
+                self.assertEqual(len(app.list_jobs()),1)
+                self.assertTrue(app.delete_task('123456abcdef')['ok'])
+                self.assertEqual(app.list_jobs(),[])
+
     def test_cloud_failure_preserves_local_document_and_task(self):
         from types import SimpleNamespace
         with tempfile.TemporaryDirectory() as tmp:
