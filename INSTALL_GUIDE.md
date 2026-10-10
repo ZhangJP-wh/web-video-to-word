@@ -220,6 +220,16 @@ __pycache__/
 *.sqlite
 *.sqlite3
 *storage-state*
+
+# Local personal data and authentication state must never be published.
+*.mp3
+*.m4a
+*.mp4
+*.wav
+*.webm
+*.sqlite
+*.sqlite3
+*storage-state*
 ```
 
 ### FILE: app.py
@@ -4016,7 +4026,7 @@ exit $result
 ### FILE: 文件校验.json
 ```text
 {
-  ".gitignore": "1d9594b7ccf0d8bf23f5b6bb67eebf9a8633b907d972ba4c9693e8d1a031a50e",
+  ".gitignore": "441ba499047830ff2c33283c180262761565e59eb322ed49d0faa5ef50c3b1c7",
   "app.py": "7b73c01abcb72bc63085d82939e3068dd274e76f3f1d1041e9ace4a5d2c3998e",
   "bilibili_download.py": "286ed2197bb0763f3f060aea40075d0cb4a46c1252ef19a0343358e00dd40f5d",
   "browser_service.py": "4bb4e16ac5b1f0ba53a46e3df01a55b5072f4d1dcbd3c48e745aaf55d8e5136a",
