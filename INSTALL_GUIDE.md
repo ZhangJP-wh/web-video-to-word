@@ -17,7 +17,7 @@
 
 ## 登录与删除
 
-页面上有标题旁蓝色“登录千问”按钮。识别任务检测到登录失效后显示需要重新登录；点击按钮登录、关闭登录窗口，再点击重试。空闲时不保证实时发现过期，也不会主动抢占屏幕。
+页面上有标题旁蓝色“登录或打开千问”按钮。识别任务检测到登录失效后显示需要重新登录；点击按钮登录、关闭登录窗口，再点击重试。空闲时不保证实时发现过期，也不会主动抢占屏幕。
 
 已完成任务的“删除任务并同步到千问”与“查看 Word 文稿”“打开文档所在位置”同排，不再提供重复下载按钮。每条任务的“删除任务并同步到千问”会停止该任务，将相关本机文件、已完成和未完成 Word、任务记录移入废纸篓；点击“删除任务并同步到千问”会删除对应千问记录，云端删除后无法恢复。删除结果逐项列出工具任务记录、本机文稿及任务文件、对应千问记录，每项成功显示绿色、失败显示红色；千问记录未找到而按成功处理时显示绿色并注明情况。绿色成功提示在卡片消失后显示3秒自动清空；红色失败提示保留；失败原因保留在任务卡片并随刷新显示。成功删除后任务卡片立即从工具列表消失，旧的刷新结果不会把卡片重新显示。云端删除失败则保留本机任务和文稿，提示原因后可重试；未上传的任务只清理本机。仅删除含本工具任务编号且唯一匹配的记录，千问未找到对应记录时仍清理本机，整体按成功处理，并明确注明未找到、未执行云端删除；多个匹配记录或页面/登录异常仍视为失败。模型和登录信息不会上传 GitHub。
 
@@ -642,12 +642,12 @@ if __name__=='__main__':main()
 <style>
 body{font:16px/1.7 -apple-system,BlinkMacSystemFont,sans-serif;color:#24322d;background:#f4f6f3;max-width:920px;margin:48px auto;padding:0 24px}h1{font-size:32px}h1 button{font-size:14px;padding:6px 10px;font-weight:normal;vertical-align:middle;white-space:nowrap}input,button,.action{font:inherit;padding:10px 14px;border:1px solid #c6d1ca;border-radius:8px}input[type=url]{flex:1;min-width:180px}button,.action{background:#245441;color:white;cursor:pointer;text-decoration:none;display:inline-block}form,.actions{display:flex;gap:12px;flex-wrap:wrap}article{background:white;padding:24px;border:1px solid #e0e7e1;border-radius:12px;margin:20px 0}small{color:#62736b}a{color:#245441}#message{color:#8b4520;white-space:pre-line}#message.success{color:#176538;background:#eaf7ee;padding:12px;border-radius:8px}#message.failure{color:#a52222;background:#fff0f0;padding:12px;border-radius:8px}.delete-result{font-weight:bold;white-space:pre-wrap}.notice{background:#fff3cd;color:#9c0006;padding:14px 18px;border-left:4px solid #b07800;font-weight:bold}.secondary{background:white;color:#245441}
 #url::placeholder{color:#757575;opacity:1}#upload-zone{background:#fff;color:#757575;font:inherit;text-align:center;border:1px dashed #c6d1ca;border-radius:8px;padding:12px 14px;cursor:pointer;flex-basis:100%;box-sizing:border-box}#file-name{display:block;font-size:14px;color:#000}#form input[type=url]{order:0}#form button{order:1}#upload-zone{order:2}#qianwen-login{background:#004B93;border-color:#004B93}#qianwen-login:hover{background:#003B75}#form button{background:#D65A00;border-color:#D65A00}#form button:hover{background:#B94D00}</style>
-<h1>网页视频转语音识别文字稿（由千问提供支持） <button type="button" id="qianwen-login">登录千问</button></h1>
+<h1>网页视频转语音识别文字稿（由千问提供支持） <button type="button" id="qianwen-login">登录或打开千问</button></h1>
 <p>粘贴网页链接，后台下载并默认交给千问识别语音、区分发言人，生成带时间戳、以视频标题命名的 Word。</p>
 <form id="form" autocomplete="off"><input id="url" autocomplete="off" aria-label="音视频网页链接" type="url" placeholder="粘贴YouTube、B站、小宇宙等音视频网页链接"><label id="upload-zone" tabindex="0">点击或将音视频文件拖拽到此处上传<input id="media-file" type="file" accept="audio/*,video/*,.mkv,.flac,.opus" hidden><span id="file-name"></span></label><button>开始生成文稿</button></form>
 <p class="actions"><span id="login-status" role="status">正在读取登录千问状态…</span></p><p id="message" role="status"></p>
 <p class="notice">本文稿内容为语音模型识别结果，需要注意：可能有错别字和识别不准确之处。</p>
-<p><small>Word 保存到“下载/网页视频转语音识别文字稿（由千问提供支持）”。音频将上传千问服务器；需要登录时点击上方“登录千问”。完成后直接查看或打开所在位置。Word 完整性检查通过后自动将原音视频移入废纸篓并清理临时音轨。</small></p>
+<p><small>Word 保存到“下载/网页视频转语音识别文字稿（由千问提供支持）”。音频将上传千问服务器；需要登录时点击上方“登录或打开千问”。完成后直接查看或打开所在位置。Word 完整性检查通过后自动将原音视频移入废纸篓并清理临时音轨。</small></p>
 <div id="jobs"></div>
 <script>
 
@@ -660,7 +660,7 @@ function showDeletionResult(result,success){clearTimeout(deleteNoticeTimer);msg.
 const deletedTaskIds=new Set();const deletionResults=new Map();let refreshSequence=0;
 async function requireControls(){let h=await(await fetch('/health')).json();if(!h.task_controls)throw Error('请双击“加载本次更新.command”，让网页服务加载登录和删除功能。')}
 document.querySelector('#qianwen-login').onclick=async()=>{try{await requireControls();let r=await post('/qianwen/login',{});msg.textContent=r.message}catch(e){msg.textContent=e.message}};
-async function refreshLogin(){try{let h=await(await fetch('/health')).json();if(!h.task_controls){document.querySelector('#login-status').textContent='新功能需要加载本次更新';return}let s=await(await fetch('/qianwen/status')).json();let text=s.window_open?'请在千问窗口中完成登录，完成后关闭窗口':s.status==='required'?'千问需要重新登录，请点击标题旁的“登录千问”按钮':s.last_success?'最近成功转写：'+new Date(s.last_success*1000).toLocaleString()+'；任务中会继续验证登录':'登录状态待验证；首次使用请点击登录千问';document.querySelector('#login-status').textContent=s.error||text}catch(e){document.querySelector('#login-status').textContent='暂时无法读取登录状态'}}
+async function refreshLogin(){try{let h=await(await fetch('/health')).json();if(!h.task_controls){document.querySelector('#login-status').textContent='新功能需要加载本次更新';return}let s=await(await fetch('/qianwen/status')).json();let text=s.window_open?'请在千问窗口中完成登录，完成后关闭窗口':s.status==='required'?'千问需要重新登录，请点击标题旁的“登录或打开千问”按钮':s.last_success?'最近成功转写：'+new Date(s.last_success*1000).toLocaleString()+'；任务中会继续验证登录':'登录状态待验证；首次使用请点击“登录或打开千问”';document.querySelector('#login-status').textContent=s.error||text}catch(e){document.querySelector('#login-status').textContent='暂时无法读取登录状态'}}
 async function post(url,data){let r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});let j=await r.json();if(!r.ok){let error=Error(j.error);error.deletionResult=j.deletion_result;throw error}return j}
 let selectedFile=null;
 const zone=document.querySelector('#upload-zone'),picker=document.querySelector('#media-file'),urlInput=document.querySelector('#url');
@@ -2442,7 +2442,7 @@ exit $result
   "qianwen_browser.py": "4042b5e64acb95f87c8be2de002b46d52bc172a5b833877e23d397e06fd296f7",
   "测试千问后台流程.command": "365ea7c455b38238341c79e3f2db6531de8053c34a909c4a210a19248a680c8c",
   "smoke_qianwen.py": "5a41ae58b74a8f2edaaadeb36c60235646989c5bdb2aa49e17d72dfd8778f71e",
-  "index.html": "8807e6f53fce9bcabe4e2b01782e55ca6bf20aeccdfb7e452f209729ab3a1e66",
+  "index.html": "a5ae1e8ce64032d6ee744fa81e4649a13041f0f281b911cf52db48cbb0c38add",
   "停用自动启动.command": "0c2353cd41fd56b737864d09d6fe83f8b7d62cc1c51757e86fe0bc6bbd76b682",
   "launch_service.py": "2cadb70ee153b678af24a6eb9e911d7e6e2ae4906ca8d3115ff8bb723d516dba",
   "requirements.txt": "8f1f858b32310780d785ef1d196205c8c85a0c44efbb9fe4124bf7e98c9a96d3",
