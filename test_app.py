@@ -108,6 +108,18 @@ class PageTests(unittest.TestCase):
 
 
 
+class SubmissionSnapshotTests(unittest.TestCase):
+    def test_submission_response_contains_numbered_persisted_card(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);job=root/'jobs/123456abcdef';job.mkdir(parents=True)
+            (job/'job.json').write_text(json.dumps({'url':'https://example.com','state':'queued'}))
+            with patch.object(app,'WORK',root):
+                response=app.submission_result(job.name)
+            self.assertEqual(response['job']['id'],job.name)
+            self.assertEqual(response['job']['state'],'queued')
+            self.assertGreater(response['job']['task_number'],0)
+            self.assertFalse(response['job']['has_document'])
+
 class WorkerFailureTests(unittest.TestCase):
     def test_launch_failure_is_visible_and_next_job_runs(self):
         from unittest.mock import MagicMock

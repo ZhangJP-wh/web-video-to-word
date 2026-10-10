@@ -175,6 +175,15 @@ def list_jobs():
     return sorted(items,key=lambda item:item['task_number'],reverse=True)
 
 
+def submission_result(ident):
+    from task_numbering import numbers
+    folder=WORK/'jobs'/ident
+    item=json.loads((folder/'job.json').read_text())
+    item.update(id=ident,task_number=numbers(WORK)[ident])
+    item['has_document']=bool(item.get('document') and Path(item['document']).is_file())
+    return {'id':ident,'job':item}
+
+
 def worker():
     while True:
         ident, url, generation = tasks.get()
@@ -437,14 +446,14 @@ class Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get('Content-Length', '0'))
             if self.path == '/upload':
                 self.connection.settimeout(120)
-                return self.reply(200, {'id': receive_upload(self.rfile,length,unquote(self.headers.get('X-File-Name','')))})
+                return self.reply(200, submission_result(receive_upload(self.rfile,length,unquote(self.headers.get('X-File-Name','')))))
             if not 0 < length <= 5_000_000:
                 raise ValueError('提交内容为空或过大')
             data = json.loads(self.rfile.read(length))
             if not isinstance(data,dict):raise ValueError('提交内容必须是对象')
             if self.path == '/jobs':
                 if not isinstance(data.get('url'),str):raise ValueError('请提交有效的网页链接')
-                return self.reply(200, {'id': enqueue(data['url'].strip(), 'qianwen')})
+                return self.reply(200, submission_result(enqueue(data['url'].strip(), 'qianwen')))
             verification=re.fullmatch(r'/youtube/confirm/([0-9a-f]{12})',self.path)
             if verification:
                 from youtube_verification import confirm
