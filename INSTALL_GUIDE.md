@@ -6,7 +6,7 @@
 
 1. 首次安装后，双击“配置千问登录.command”，在专用窗口登录千问，返回终端按回车。
 2. 双击“启动工具.command”，打开终端给出的本机网页地址。公开安装版默认为 http://127.0.0.1:8767/。
-3. 粘贴 YouTube、哔哩哔哩等视频页面链接，点击橙色“开始生成文稿”。任务添加成功后链接框自动清空，可继续粘贴下一条；提交失败时保留链接。
+3. 粘贴 YouTube、哔哩哔哩等视频页面链接，点击橙色“开始生成文稿”。任务添加成功后链接框自动清空，可继续粘贴下一条；提交失败时保留链接。链接输入框关闭浏览器历史自动填充。
 4. 稍后回来查看文稿，或点击“打开文档所在位置”。任务记录最新的排在最上面。
 
 每份 Word 第一行保留原视频网页链接，按视频标题命名，包含全部识别原文、时间戳和发言人信息。显著提示：
@@ -526,7 +526,7 @@ body{font:16px/1.7 -apple-system,BlinkMacSystemFont,sans-serif;color:#24322d;bac
 #qianwen-login{background:#004B93;border-color:#004B93}#qianwen-login:hover{background:#003B75}#form button{background:#D65A00;border-color:#D65A00}#form button:hover{background:#B94D00}</style>
 <h1>网页视频转语音识别文字稿（由千问提供支持）</h1>
 <p>粘贴网页链接，后台下载并默认交给千问识别语音、区分发言人，生成带时间戳、以视频标题命名的 Word。</p>
-<form id="form"><input id="url" aria-label="音视频网页链接" type="url" required placeholder="粘贴 YouTube、哔哩哔哩等音视频网页链接"><button>开始生成文稿</button></form>
+<form id="form" autocomplete="off"><input id="url" autocomplete="off" aria-label="音视频网页链接" type="url" required placeholder="粘贴 YouTube、哔哩哔哩等音视频网页链接"><button>开始生成文稿</button></form>
 <p class="actions"><button type="button" id="qianwen-login">千问登录</button><span id="login-status" role="status">正在读取千问登录状态…</span></p><p id="message" role="status"></p>
 <p class="notice">本文稿内容为语音模型识别结果，需要注意：可能有错别字和识别不准确之处。</p>
 <p><small>Word 保存到“下载/网页视频转语音识别文字稿（由千问提供支持）”。音频将上传千问服务器；需要登录时点击上方“千问登录”。完成后直接查看或打开所在位置。Word 完整性检查通过后自动将原音视频移入废纸篓并清理临时音轨。</small></p>
@@ -1910,7 +1910,7 @@ exit $result
   "qianwen_browser.py": "f19cd54031b7d7c3f4dfe4fa13b7b03a11dbe49b859d79f52a3c9570c26f3cc3",
   "测试千问后台流程.command": "365ea7c455b38238341c79e3f2db6531de8053c34a909c4a210a19248a680c8c",
   "smoke_qianwen.py": "5a41ae58b74a8f2edaaadeb36c60235646989c5bdb2aa49e17d72dfd8778f71e",
-  "index.html": "c2cd0c55ef39c598df3cf3ce9734dd5738e84378c25999fa5254d35c4e3d4d8f",
+  "index.html": "bc0041386bbc0a09ca620c3f6eec8711e1eaf5646b89291d6d7eded8932b417b",
   "停用自动启动.command": "0c2353cd41fd56b737864d09d6fe83f8b7d62cc1c51757e86fe0bc6bbd76b682",
   "launch_service.py": "2cadb70ee153b678af24a6eb9e911d7e6e2ae4906ca8d3115ff8bb723d516dba",
   "requirements.txt": "8f1f858b32310780d785ef1d196205c8c85a0c44efbb9fe4124bf7e98c9a96d3",
