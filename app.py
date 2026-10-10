@@ -25,7 +25,10 @@ def document_path(ident):
     job = WORK / 'jobs' / ident
     meta = json.loads((job / 'job.json').read_text())
     path = Path(meta.get('document', '/nonexistent')).resolve()
-    if not any(root.resolve() in path.parents for root in (OUTPUT, LEGACY_OUTPUT, ROOT / 'outputs')) or not path.is_file():
+    migrated = OUTPUT / path.name
+    if path.parent == OUTPUT.parent / '网页视频转语音文稿' and migrated.is_file():
+        path = migrated.resolve()
+    if not any(root.resolve() in path.parents for root in (OUTPUT, LEGACY_OUTPUT, ROOT / 'outputs', OUTPUT.parent / '网页视频转语音文稿')) or not path.is_file():
         raise ValueError('文档不存在')
     return path
 
@@ -234,5 +237,5 @@ if __name__ == '__main__':
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     resume_jobs()
     threading.Thread(target=worker, daemon=True).start()
-    print(f'音视频文稿队列：http://{HOST}:{PORT}', flush=True)
+    print(f'网页视频转语音识别文字稿：http://{HOST}:{PORT}', flush=True)
     server.serve_forever()

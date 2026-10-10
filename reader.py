@@ -16,7 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 WORK = ROOT / 'work'
 LEGACY_OUTPUT = Path.home() / 'Downloads' / '音视频文稿'
-OUTPUT = Path.home() / 'Downloads' / '网页视频转语音文稿'
+OUTPUT = Path.home() / 'Downloads' / '网页视频转语音识别文字稿'
 NOTICE = '本文稿内容为语音模型识别结果，需要注意：可能有错别字和识别不准确之处。'
 
 

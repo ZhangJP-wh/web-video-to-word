@@ -1,14 +1,14 @@
-# 网页视频转语音文稿：安装、使用与验收指南
+# 网页视频转语音识别文字稿：安装、使用与验收指南
 
 版本：2026-10-07。适用对象：电脑初学者，以及具备本地文件、终端和网络权限的 AI Agent。
 
-这是一份可独立交给 Agent 的指南：附录包含本分享版的完整源码和校验值。本项目的 GitHub 地址为 https://github.com/ZhangJP-wh/web-video-to-word- 。可点击 Code → Download ZIP 下载源码。拿到配套源码 ZIP 时可以直接解压；只有本文时，Agent 可以按第 11 节提取附录源码。普通读者只需读第 1～8 节，代码附录不必逐行阅读。
+这是一份可独立交给 Agent 的指南：附录包含本分享版的完整源码和校验值。本项目的 GitHub 地址为 https://github.com/ZhangJP-wh/web-video-to-word 。可点击 Code → Download ZIP 下载源码。拿到配套源码 ZIP 时可以直接解压；只有本文时，Agent 可以按第 11 节提取附录源码。普通读者只需读第 1～8 节，代码附录不必逐行阅读。
 
 ## 1. 这个工具做什么
 
 操作流程：粘贴音视频网页链接 → 后台下载 → 本地声纹区分 → Qwen3-ASR-1.7B 语音识别 → 自动生成 Word → 验证写入完整 → 下载的原音视频移入废纸篓。
 
-Word 第一行是原网页链接，随后是视频标题、醒目提示、带音频时间范围和发言人编号的识别文字。所有 Word 直接放在自己的“下载/网页视频转语音文稿”文件夹里，不创建任务二级文件夹。同标题的不同视频可能追加任务编号，避免覆盖。任务页面按添加任务的时间倒序，最新在最上方；Finder 可按文档添加日期倒序排列。
+Word 第一行是原网页链接，随后是视频标题、醒目提示、带音频时间范围和发言人编号的识别文字。所有 Word 直接放在自己的“下载/网页视频转语音识别文字稿”文件夹里，不创建任务二级文件夹。同标题的不同视频可能追加任务编号，避免覆盖。任务页面按添加任务的时间倒序，最新在最上方；Finder 可按文档添加日期倒序排列。
 
 提示原文：本文稿内容为语音模型识别结果，需要注意：可能有错别字和识别不准确之处。
 
@@ -50,7 +50,7 @@ Word 第一行是原网页链接，随后是视频标题、醒目提示、带音
 
 ### 4.1 获取工具文件
 
-优先使用分享者发来的“网页视频转语音文稿-源码包.zip”。下载后双击解压，得到 source 文件夹。把这个文件夹改名为 VideoTranscript，移到自己的个人目录中，最终位置建议为 ~/VideoTranscript。
+优先使用分享者发来的“网页视频转语音识别文字稿-源码包.zip”。下载后双击解压，得到 source 文件夹。把这个文件夹改名为 VideoTranscript，移到自己的个人目录中，最终位置建议为 ~/VideoTranscript。
 
 Finder 中打开个人目录的方法：菜单“前往”→“个人”。~/ 是你自己的个人目录，不要输入分享者的用户名。不要把程序长期放在 ZIP 内运行，也不要在首次安装后搬动已建立 .venv 的整个文件夹。
 
@@ -107,7 +107,7 @@ chmod u+x 首次安装.command 启动工具.command
 5. 最新添加任务在最上方，完成时仍按任务添加顺序排列，不按文档完成时间重新排队。
 6. 出现“Word 已生成，可以查看”后，点“查看 Word 文稿”在页面阅读，或点“打开文档所在位置”在 Finder 中找到文件。
 7. Word 第一行有原链接，正文有提示和时间戳。多人对话还应有不同发言人编号，但编号可能分错。
-8. 默认 Word 已在自己的“下载/网页视频转语音文稿”内；“下载 Word”按钮用于另存副本，可能由浏览器再次生成重名副本，不是必须点击。
+8. 默认 Word 已在自己的“下载/网页视频转语音识别文字稿”内；“下载 Word”按钮用于另存副本，可能由浏览器再次生成重名副本，不是必须点击。
 9. 本工具下载的原音视频在文档写入检查通过后移入废纸篓。它不会删除自己原本存在的其他视频，也不自动清空废纸篓。只有自己决定不再需要恢复原视频时，才手动清空。
 
 相同链接会复用原任务，已经完成且 Word 存在时不会重复生成。没有结果或任务失败时先阅读错误。不要在任务正在运行时反复启动多个工具副本、移动项目文件夹或改写任务 JSON。
@@ -191,7 +191,7 @@ curl --fail --location 'https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen3-AS
 
 用户可复制这段话给自己的本地 Agent：
 
-“请阅读这份《网页视频转语音文稿-安装与使用指南》，先确认我的电脑是否属于适用范围；从配套源码或第 11 节完整源码附录建立 ~/VideoTranscript。按第 10 节阶段表完成环境检测、依赖安装、模型下载、启动与第 6 节验收。保留我的个人文件，使用本地免费模型和本机回环地址。请在你的权限范围内执行；遇到必须由我输入的管理员密码、登录、验证码或安全许可时说明具体步骤。不要仅因测试脚本 OK 就声称真实识别成功，最后给出安装路径、模型路径、Word 路径和逐项验收结果。”
+“请阅读这份《网页视频转语音识别文字稿-安装与使用指南》，先确认我的电脑是否属于适用范围；从配套源码或第 11 节完整源码附录建立 ~/VideoTranscript。按第 10 节阶段表完成环境检测、依赖安装、模型下载、启动与第 6 节验收。保留我的个人文件，使用本地免费模型和本机回环地址。请在你的权限范围内执行；遇到必须由我输入的管理员密码、登录、验证码或安全许可时说明具体步骤。不要仅因测试脚本 OK 就声称真实识别成功，最后给出安装路径、模型路径、Word 路径和逐项验收结果。”
 
 指南是用户的操作说明，不是对 Agent 平台安全规则或权限的豁免。平台允许时可以自动完成下载安装和文件操作；必须人工完成的系统安装器、授权、登录、验证码等应交给用户。没有网络、文件或终端权限时，要具体报告限制。
 
@@ -199,7 +199,7 @@ curl --fail --location 'https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen3-AS
 
 ### A0：建立任务与边界
 
-目标目录固定为当前用户的 ~/VideoTranscript，输出固定为 ~/Downloads/网页视频转语音文稿。若已有同名项目，先读取、核查是否为本工具；不覆盖不明文件，不删除已有模型。只绑定 127.0.0.1:8767，不部署公网。执行前记录自己拥有的文件、网络和进程权限。
+目标目录固定为当前用户的 ~/VideoTranscript，输出固定为 ~/Downloads/网页视频转语音识别文字稿。若已有同名项目，先读取、核查是否为本工具；不覆盖不明文件，不删除已有模型。只绑定 127.0.0.1:8767，不部署公网。执行前记录自己拥有的文件、网络和进程权限。
 
 ### A1：环境检测
 
@@ -268,7 +268,7 @@ Markdown 版能直接提取。如果收到的是 Word 版，先把本文附录�
 python3.12 - <<'PY'
 from pathlib import Path
 import re, json, hashlib
-source = Path.home() / 'Downloads/网页视频转语音文稿-安装与使用指南.md'
+source = Path.home() / 'Downloads/网页视频转语音识别文字稿-安装与使用指南.md'
 text = source.read_text(encoding='utf-8')
 files = dict(re.findall(r'(?ms)^### FILE: ([^\n]+)\n```[^\n]*\n(.*?)\n```(?=\n|$)', text))
 manifest = json.loads(files['文件校验.json'])
@@ -329,7 +329,10 @@ def document_path(ident):
     job = WORK / 'jobs' / ident
     meta = json.loads((job / 'job.json').read_text())
     path = Path(meta.get('document', '/nonexistent')).resolve()
-    if not any(root.resolve() in path.parents for root in (OUTPUT, LEGACY_OUTPUT, ROOT / 'outputs')) or not path.is_file():
+    migrated = OUTPUT / path.name
+    if path.parent == OUTPUT.parent / '网页视频转语音文稿' and migrated.is_file():
+        path = migrated.resolve()
+    if not any(root.resolve() in path.parents for root in (OUTPUT, LEGACY_OUTPUT, ROOT / 'outputs', OUTPUT.parent / '网页视频转语音文稿')) or not path.is_file():
         raise ValueError('文档不存在')
     return path
 
@@ -538,7 +541,7 @@ if __name__ == '__main__':
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     resume_jobs()
     threading.Thread(target=worker, daemon=True).start()
-    print(f'音视频文稿队列：http://{HOST}:{PORT}', flush=True)
+    print(f'网页视频转语音识别文字稿：http://{HOST}:{PORT}', flush=True)
     server.serve_forever()
 
 ```
@@ -547,16 +550,16 @@ if __name__ == '__main__':
 ```html
 <!doctype html>
 <html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>音视频文稿</title>
+<title>网页视频转语音识别文字稿</title>
 <style>
 body{font:16px/1.7 -apple-system,BlinkMacSystemFont,sans-serif;color:#24322d;background:#f4f6f3;max-width:920px;margin:48px auto;padding:0 24px}h1{font-size:32px}input,button,.action{font:inherit;padding:10px 14px;border:1px solid #c6d1ca;border-radius:8px}input[type=url]{flex:1;min-width:180px}button,.action{background:#245441;color:white;cursor:pointer;text-decoration:none;display:inline-block}form,.actions{display:flex;gap:12px;flex-wrap:wrap}article{background:white;padding:24px;border:1px solid #e0e7e1;border-radius:12px;margin:20px 0}small{color:#62736b}a{color:#245441}#message{color:#8b4520}.notice{background:#fff3cd;color:#9c0006;padding:14px 18px;border-left:4px solid #b07800;font-weight:bold}.secondary{background:white;color:#245441}
 </style>
-<h1>音视频文稿</h1>
+<h1>网页视频转语音识别文字稿</h1>
 <p>粘贴网页链接，后台下载并用 Qwen3-ASR-1.7B 识别语音，自动区分发言人，生成带时间戳、以视频标题命名的 Word。</p>
 <form id="form"><input id="url" aria-label="音视频网页链接" type="url" required placeholder="粘贴 YouTube、哔哩哔哩等音视频网页链接"><button>开始生成文稿</button></form>
 <p id="message" role="status"></p>
 <p class="notice">本文稿内容为语音模型识别结果，需要注意：可能有错别字和识别不准确之处。</p>
-<p><small>Word 保存到“下载/网页视频转语音文稿”。无需提交给其他 AI；完成后直接查看或打开所在位置。Word 完整性检查通过后自动将原音视频移入废纸篓并清理临时音轨。</small></p>
+<p><small>Word 保存到“下载/网页视频转语音识别文字稿”。无需提交给其他 AI；完成后直接查看或打开所在位置。Word 完整性检查通过后自动将原音视频移入废纸篓并清理临时音轨。</small></p>
 <div id="jobs"></div>
 <script>
 const historicalTaskTimes={};
@@ -635,7 +638,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 WORK = ROOT / 'work'
 LEGACY_OUTPUT = Path.home() / 'Downloads' / '音视频文稿'
-OUTPUT = Path.home() / 'Downloads' / '网页视频转语音文稿'
+OUTPUT = Path.home() / 'Downloads' / '网页视频转语音识别文字稿'
 NOTICE = '本文稿内容为语音模型识别结果，需要注意：可能有错别字和识别不准确之处。'
 
 
@@ -1318,11 +1321,11 @@ print '确认页面能打开后，这个终端窗口可以关闭。'
 ### FILE: 文件校验.json
 ```json
 {
-  "app.py": "74db0bed1e6ad6af8963548c9d5a8d74f9f971a38cf1bbdcda551d40b850adf9",
-  "index.html": "28153eca7502ca97f4d6c1667c6daae8344a7afb2e01820ee451383e627e0d7e",
+  "app.py": "bdb11cb05ed1cd4466ffcd84aa9de7a037cd54a7ef9ee571fae418e358a56ecf",
+  "index.html": "778754984ab08de8e9a3e258265d23793114a2f5fe4f188c10b1b627731d57fa",
   "install.py": "d423b71bfd29145b2b6616da4b6474ad86beec07813eb8c9c36330ed298f19bb",
   "prefetch_model.py": "1c7512114bdb7d49b6a2d8a4199452f5291ad4c04fc4effa4e329b4dab227df3",
-  "reader.py": "90dceae00db3c5f91a0eadecb20a9e7347b709de33241bf3eff11d680e83f3a6",
+  "reader.py": "6847c329c06126638b7de798df74b2c7f5c0a15de0e59185f50d902efeada13f",
   "requirements.txt": "aa237150a51d1f468ccab935e7ccd3235beddaf60afb9719676dc7f8fbf63e7c",
   "test_app.py": "3bb5c3f39a4d7c0782a0a7a970e5580bc69d8204c3170468a166a2d556f84737",
   "test_reader.py": "ea7af8f55bfe4c47023ee9f712b6b078cfc9dd0beedec2325134556970fdc059",
