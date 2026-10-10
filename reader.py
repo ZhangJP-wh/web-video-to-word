@@ -192,6 +192,8 @@ def prepare(args):
         except Exception as error:
             from qianwen_browser import LoginRequired, upload_failure_message
             message=upload_failure_message(meta.get('state'),str(error))
+            if 'Sign in to confirm' in message and '[youtube]' in message:
+                message='YouTube要求登录或人机验证，当前无法获取音视频；尚未上传千问。请在YouTube完成验证后重试，或使用已取得的本地音视频文件。千问登录不能解决此问题。'
             if 'Fresh cookies' in message and 'Douyin' in message:
                 message='抖音限制了自动下载，需要有效的抖音浏览器 Cookie。精选页链接已转换成单视频地址，但尚未下载成功；千问转写尚未开始。'
             meta.update(state='login_required' if isinstance(error,LoginRequired) else 'failed', error=message)

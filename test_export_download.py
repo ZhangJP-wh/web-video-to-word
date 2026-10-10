@@ -31,3 +31,17 @@ class ExportTests(unittest.TestCase):
    target=Path(tmp)/'original.docx'
    with self.assertRaisesRegex(RuntimeError,'无需重新上传'):save_export_download(download,page,target)
    self.assertFalse(target.exists());self.assertFalse(target.with_suffix('.partial.docx').exists())
+
+ def test_large_file_uses_local_cdp_path(self):
+  from qianwen_browser import set_local_upload_file
+  with tempfile.TemporaryDirectory() as tmp:
+   path=Path(tmp)/'large.mp3'
+   with path.open('wb') as f:f.truncate(51*1024*1024)
+   chooser=Mock();page=Mock();session=page.context.new_cdp_session.return_value
+   session.send.side_effect=[{'root':{'nodeId':1}},{'nodeId':2},{}]
+   set_local_upload_file(page,chooser,path)
+   chooser.set_files.assert_not_called();session.send.assert_any_call('DOM.setFileInputFiles',{'nodeId':2,'files':[str(path.resolve())]});session.detach.assert_called_once()
+ def test_file_size_error_does_not_suggest_login(self):
+  from qianwen_browser import upload_failure_message
+  error='Cannot transfer files larger than 50Mb'
+  self.assertEqual(upload_failure_message('cloud_uploading',error),error)

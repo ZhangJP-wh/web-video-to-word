@@ -182,6 +182,8 @@ B站下载兼容：可选播放接口仅返回访问验证凭据时，保留公�
 
 千问 Word 导出下载会先校验 ZIP 完整性和正文，空文件不算下载成功。下载连接失败或文件不完整时自动重试（最多三次），复用已有云端文稿，不重新上传音频；失败保留本机媒体。
 
+超过50MB的音频改由同一电脑上的浏览器直接选择文件路径，仍遵守千问500MB和6小时限制。YouTube访问验证与千问登录分别提示；匿名下载器未必能复用普通浏览器验证，可使用本地文件入口。
+
 ## 仅收到本文档：完整源码
 
 AI Agent 可按 FILE 标记逐个提取文件，再核对文件校验.json；运行 `bash install.sh`。仅提取这里列出的公开源码，不迁移他人的登录资料。
@@ -1526,7 +1528,7 @@ class LoginRequired(RuntimeError):
 def upload_failure_message(state, message):
     """Suggest login only for unconfirmed uploads; never claim expiry without evidence."""
     if state in ('cloud_connecting', 'cloud_uploading', 'cloud_confirming_upload'):
-        if not re.search('存储已满|超限|不足|限制|不翻译|500MB|6小时|登录', message):
+        if not re.search('存储已满|超限|不足|限制|不翻译|500MB|6小时|登录|50Mb|50MB|Cannot transfer|文件', message):
             return message + '\n可能千问未登录或登录已失效，请点击“登录或打开千问”，确认登录后重试。若已登录，请检查上方具体错误原因。'
     return message
 
@@ -1607,6 +1609,24 @@ def save_export_download(download,page,destination):
         partial.replace(destination)
     finally:
         partial.unlink(missing_ok=True)
+
+def set_local_upload_file(page,chooser,path):
+    """The managed Chromium runs on this host; CDP can select its local files directly."""
+    if path.stat().st_size <= 50*1024*1024:
+        chooser.set_files(str(path))
+        return
+    import uuid
+    marker='local-upload-'+uuid.uuid4().hex
+    chooser.element.evaluate('(element,id)=>element.setAttribute("data-local-upload",id)',marker)
+    session=page.context.new_cdp_session(page)
+    try:
+        root=session.send('DOM.getDocument',{'depth':-1,'pierce':True})['root']['nodeId']
+        node=session.send('DOM.querySelector',{'nodeId':root,'selector':'[data-local-upload="'+marker+'"]'})['nodeId']
+        if not node:raise RuntimeError('未找到上传输入框，请重试')
+        session.send('DOM.setFileInputFiles',{'nodeId':node,'files':[str(path.resolve())]})
+    finally:
+        session.detach()
+        chooser.element.evaluate('(element)=>element.removeAttribute("data-local-upload")')
 
 class TaskContext:
     def __init__(self,context):
@@ -1757,7 +1777,7 @@ def export_audio(audio, job, meta, save):
                     meta['state']='cloud_uploading';save(job/'job.json',meta)
                     with page.expect_file_chooser() as chooser:
                         page.get_by_role('button', name=re.compile('点击或将')).click()
-                    chooser.value.set_files(str(upload))
+                    set_local_upload_file(page,chooser.value,upload)
                     page.screenshot(path=str(job/'upload-selected.png'),full_page=True)
                     (job/'upload-selected.txt').write_text(page.locator('body').inner_text(), encoding="utf-8")
                     from playwright.sync_api import expect
@@ -2104,6 +2124,8 @@ def prepare(args):
         except Exception as error:
             from qianwen_browser import LoginRequired, upload_failure_message
             message=upload_failure_message(meta.get('state'),str(error))
+            if 'Sign in to confirm' in message and '[youtube]' in message:
+                message='YouTube要求登录或人机验证，当前无法获取音视频；尚未上传千问。请在YouTube完成验证后重试，或使用已取得的本地音视频文件。千问登录不能解决此问题。'
             if 'Fresh cookies' in message and 'Douyin' in message:
                 message='抖音限制了自动下载，需要有效的抖音浏览器 Cookie。精选页链接已转换成单视频地址，但尚未下载成功；千问转写尚未开始。'
             meta.update(state='login_required' if isinstance(error,LoginRequired) else 'failed', error=message)
@@ -3006,6 +3028,20 @@ class ExportTests(unittest.TestCase):
    target=Path(tmp)/'original.docx'
    with self.assertRaisesRegex(RuntimeError,'无需重新上传'):save_export_download(download,page,target)
    self.assertFalse(target.exists());self.assertFalse(target.with_suffix('.partial.docx').exists())
+
+ def test_large_file_uses_local_cdp_path(self):
+  from qianwen_browser import set_local_upload_file
+  with tempfile.TemporaryDirectory() as tmp:
+   path=Path(tmp)/'large.mp3'
+   with path.open('wb') as f:f.truncate(51*1024*1024)
+   chooser=Mock();page=Mock();session=page.context.new_cdp_session.return_value
+   session.send.side_effect=[{'root':{'nodeId':1}},{'nodeId':2},{}]
+   set_local_upload_file(page,chooser,path)
+   chooser.set_files.assert_not_called();session.send.assert_any_call('DOM.setFileInputFiles',{'nodeId':2,'files':[str(path.resolve())]});session.detach.assert_called_once()
+ def test_file_size_error_does_not_suggest_login(self):
+  from qianwen_browser import upload_failure_message
+  error='Cannot transfer files larger than 50Mb'
+  self.assertEqual(upload_failure_message('cloud_uploading',error),error)
 ```
 
 ### FILE: test_install.py
@@ -3874,8 +3910,8 @@ exit $result
   "install.py": "8fb062e855fb41616c65923dc4ca43808d4c710fc8919d1cb62c039a1fb2144c",
   "install.sh": "abead2c9d17bc14579905cab745be4220776c7d954a96042028c7b4855164826",
   "launch_service.py": "2cadb70ee153b678af24a6eb9e911d7e6e2ae4906ca8d3115ff8bb723d516dba",
-  "qianwen_browser.py": "fd2b1abaa5bfcf976950c73b39ea40af78253d407f912d252a265d12d5d84bb3",
-  "reader.py": "c5ca5add9980f167b3566ae4fc1f536f4cd6055da666990fe418640572027566",
+  "qianwen_browser.py": "9ec0997fe8d21e15c169dd534c6b1686bcdbd4281497aa6a8ac3ad3b1d91e109",
+  "reader.py": "70a3c927f44100b9365c10478f0c46c2c50b4cff17b9662f292fa7e8b5cdd1ea",
   "requirements.txt": "ca2ed115c7d5ef1c7d63e54519aa39795e35d48d74ac5e8b7be278ccc8e7f083",
   "runtime_compat.py": "88356cfde1ee32b4a9100f48ee374ed7e5ac0ba558f6a8626dde430c10b1191f",
   "runtime_status.py": "53e0df100829fd59b385b1fbdddb8bb0da17ff0a5ba88d91c2fb4b29ba2d5c3a",
@@ -3888,7 +3924,7 @@ exit $result
   "test_bilibili_download.py": "7d880288610b8e78afb0927f074275b737b143b5b81750c4caf51d99ebe7dae1",
   "test_browser_service.py": "fa30cf65671ef804c0fee82b0cecced1a3748bbc9f2209cde584ceb8aa49a2c3",
   "test_deletion_queue.py": "172f0a40974d00804f6d7e0d0fbcdf72acc7178c1d301c7cfec678d88985db71",
-  "test_export_download.py": "fb8ab3834ee3b755a7201375ffb12157e7e8829b89f6bd37a12c03f02e52cd75",
+  "test_export_download.py": "9a9df755dd836be1ffdabde04ea1da8021258db75be2c8b89c39c5b48bb3f605",
   "test_install.py": "5ecdd4f27fc1761c89a27fd5d623377f05315a318cbb622bbd615686798b4941",
   "test_qianwen.py": "9fb2902cabfbb02f36b5ce3bed5c96205ba05b6b390833cae97e10ecafd78473",
   "test_reader.py": "0320926db03be6d0726c88092cdd5cb7d88b3cc7fcfb9d341bc3e0cf740a6b02",

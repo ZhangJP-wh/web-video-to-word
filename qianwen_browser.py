@@ -48,7 +48,7 @@ class LoginRequired(RuntimeError):
 def upload_failure_message(state, message):
     """Suggest login only for unconfirmed uploads; never claim expiry without evidence."""
     if state in ('cloud_connecting', 'cloud_uploading', 'cloud_confirming_upload'):
-        if not re.search('存储已满|超限|不足|限制|不翻译|500MB|6小时|登录', message):
+        if not re.search('存储已满|超限|不足|限制|不翻译|500MB|6小时|登录|50Mb|50MB|Cannot transfer|文件', message):
             return message + '\n可能千问未登录或登录已失效，请点击“登录或打开千问”，确认登录后重试。若已登录，请检查上方具体错误原因。'
     return message
 
@@ -129,6 +129,24 @@ def save_export_download(download,page,destination):
         partial.replace(destination)
     finally:
         partial.unlink(missing_ok=True)
+
+def set_local_upload_file(page,chooser,path):
+    """The managed Chromium runs on this host; CDP can select its local files directly."""
+    if path.stat().st_size <= 50*1024*1024:
+        chooser.set_files(str(path))
+        return
+    import uuid
+    marker='local-upload-'+uuid.uuid4().hex
+    chooser.element.evaluate('(element,id)=>element.setAttribute("data-local-upload",id)',marker)
+    session=page.context.new_cdp_session(page)
+    try:
+        root=session.send('DOM.getDocument',{'depth':-1,'pierce':True})['root']['nodeId']
+        node=session.send('DOM.querySelector',{'nodeId':root,'selector':'[data-local-upload="'+marker+'"]'})['nodeId']
+        if not node:raise RuntimeError('未找到上传输入框，请重试')
+        session.send('DOM.setFileInputFiles',{'nodeId':node,'files':[str(path.resolve())]})
+    finally:
+        session.detach()
+        chooser.element.evaluate('(element)=>element.removeAttribute("data-local-upload")')
 
 class TaskContext:
     def __init__(self,context):
@@ -279,7 +297,7 @@ def export_audio(audio, job, meta, save):
                     meta['state']='cloud_uploading';save(job/'job.json',meta)
                     with page.expect_file_chooser() as chooser:
                         page.get_by_role('button', name=re.compile('点击或将')).click()
-                    chooser.value.set_files(str(upload))
+                    set_local_upload_file(page,chooser.value,upload)
                     page.screenshot(path=str(job/'upload-selected.png'),full_page=True)
                     (job/'upload-selected.txt').write_text(page.locator('body').inner_text(), encoding="utf-8")
                     from playwright.sync_api import expect
