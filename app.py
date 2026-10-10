@@ -56,9 +56,9 @@ def document_path(ident):
     meta = json.loads((job / 'job.json').read_text(encoding="utf-8"))
     path = Path(meta.get('document', '/nonexistent')).resolve()
     migrated = OUTPUT / path.name
-    if path.parent in (OUTPUT.parent / '网页视频转语音文稿', OUTPUT.parent / '网页视频转语音识别文字稿') and migrated.is_file():
+    if path.parent in (OUTPUT.parent / '网页视频转语音识别文字稿（由千问提供支持）', OUTPUT.parent / '网页视频转语音文稿', OUTPUT.parent / '网页视频转语音识别文字稿') and migrated.is_file():
         path = migrated.resolve()
-    if not any(root.resolve() in path.parents for root in (OUTPUT, LEGACY_OUTPUT, ROOT / 'outputs', OUTPUT.parent / '网页视频转语音文稿', OUTPUT.parent / '网页视频转语音识别文字稿')) or not path.is_file():
+    if not any(root.resolve() in path.parents for root in (OUTPUT, LEGACY_OUTPUT, ROOT / 'outputs', OUTPUT.parent / '网页视频转语音识别文字稿（由千问提供支持）', OUTPUT.parent / '网页视频转语音文稿', OUTPUT.parent / '网页视频转语音识别文字稿')) or not path.is_file():
         raise ValueError('文档不存在')
     return path
 
@@ -248,7 +248,7 @@ def delete_task(ident):
             raise
         cloud_meta=json.loads((folder/'job.json').read_text(encoding="utf-8"))
         cloud_status=cloud_meta.get('qianwen_delete_result','deleted' if cloud_meta.get('qianwen_cloud_deleted') else 'failed')
-        result=trash_task(ROOT,WORK,[OUTPUT,LEGACY_OUTPUT,ROOT/'outputs',OUTPUT.parent/'网页视频转语音文稿'],ident)
+        result=trash_task(ROOT,WORK,[OUTPUT,OUTPUT.parent/'网页视频转语音识别文字稿（由千问提供支持）',LEGACY_OUTPUT,ROOT/'outputs',OUTPUT.parent/'网页视频转语音文稿'],ident)
         pending.discard(ident);generations.pop(ident,None)
         result['deletion_result']=deletion_report(True,cloud_status)
         result['message']=result['deletion_result']['message']

@@ -16,7 +16,11 @@ from runtime_compat import IS_WINDOWS
 ROOT = Path(__file__).resolve().parent
 WORK = ROOT / 'work'
 LEGACY_OUTPUT = Path.home() / 'Downloads' / '音视频文稿'
-OUTPUT = Path.home() / 'Downloads' / '网页视频转语音识别文字稿（由千问提供支持）'
+OUTPUT = Path.home() / 'Downloads' / '网页视频转文字稿（由千问提供语音识别支持）'
+PREVIOUS_OUTPUT = OUTPUT.parent / '网页视频转语音识别文字稿（由千问提供支持）'
+# Preserve existing documents when upgrading an installed copy.
+if PREVIOUS_OUTPUT.is_dir() and not OUTPUT.exists():
+    PREVIOUS_OUTPUT.rename(OUTPUT)
 NOTICE = '本文稿内容为语音模型识别结果，需要注意：可能有错别字和识别不准确之处。'
 
 
@@ -130,7 +134,7 @@ def prepare(args):
                        'outtmpl': str(media_folder / '%(title).60s.%(ext)s'),
                        'merge_output_format': 'mkv', 'retries': 5,
                        'socket_timeout': 30, 'overwrites': False}
-            node = Path('~/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node')
+            node = Path.home() / '.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node'
             if node.exists():
                 options['js_runtimes'] = {'node': {'path': str(node)}}
             if args.cookies_browser:

@@ -1,4 +1,4 @@
-# 网页视频转语音识别文字稿（由千问提供支持）
+# 网页视频转文字稿（由千问提供语音识别支持）
 
 ## 先安装：电脑小白从这里开始
 
@@ -23,7 +23,7 @@
 3. **Mac：**双击 `首次安装.command`。**Windows：**双击 `install-windows.cmd`。保持网络连通，等待依赖、浏览器和测试完成。首次耗时取决于网速，没有固定分钟数。
 4. 看到“服务启动及 /health 检查通过”并打开本机网页，即本机安装验收完成。默认地址为 **http://127.0.0.1:8767/**。该地址只在安装工具的这台电脑上使用。
 5. 在网页标题旁点击蓝色 **“登录或打开千问”**，在专用窗口中本人登录，处理验证码，完成后关闭登录窗口。Agent 不需要你的密码或 Cookie。
-6. 选择一个你有权处理的短音视频文件，或粘贴视频链接，点击橙色 **“开始生成文稿”**。Word 保存到用户“下载”文件夹中的“网页视频转语音识别文字稿（由千问提供支持）”。
+6. 选择一个你有权处理的短音视频文件，或粘贴视频链接，点击橙色 **“开始生成文稿”**。Word 保存到用户“下载”文件夹中的“网页视频转文字稿（由千问提供语音识别支持）”。
 7. 下次使用：Mac 双击 `启动工具.command`；Windows 双击 `start-windows.cmd`。重启电脑后要重新启动工具；Windows 当前不自动设置开机启动。
 
 Windows 版本支持范围依据 [Playwright 官方系统要求](https://playwright.dev/python/docs/intro#system-requirements)。Windows Server 2019+ 可用于自动化验收；普通用户优先使用 Windows 11 x64。
@@ -93,7 +93,7 @@ bash install.sh --start-only --open  # 启动已安装工具并验证；不重�
 
 > 本文稿内容为语音模型识别结果，需要注意：可能有错别字和识别不准确之处。
 
-所有文稿直接保存在 `~/Downloads/网页视频转语音识别文字稿（由千问提供支持）/`，不建立任务二级文件夹。完成文档结构和内容完整性检查后，原下载媒体移入废纸篓，临时音轨清理。程序检查不代表人工确认识别准确率。本工具不生成总结。
+所有文稿直接保存在 `~/Downloads/网页视频转文字稿（由千问提供语音识别支持）/`，不建立任务二级文件夹。完成文档结构和内容完整性检查后，原下载媒体移入废纸篓，临时音轨清理。程序检查不代表人工确认识别准确率。本工具不生成总结。
 
 ## 登录与删除
 
@@ -210,6 +210,16 @@ __pycache__/
 *.log
 
 .venv.backup-*/
+
+# Local personal data and authentication state must never be published.
+*.mp3
+*.m4a
+*.mp4
+*.wav
+*.webm
+*.sqlite
+*.sqlite3
+*storage-state*
 ```
 
 ### FILE: app.py
@@ -272,9 +282,9 @@ def document_path(ident):
     meta = json.loads((job / 'job.json').read_text(encoding="utf-8"))
     path = Path(meta.get('document', '/nonexistent')).resolve()
     migrated = OUTPUT / path.name
-    if path.parent in (OUTPUT.parent / '网页视频转语音文稿', OUTPUT.parent / '网页视频转语音识别文字稿') and migrated.is_file():
+    if path.parent in (OUTPUT.parent / '网页视频转语音识别文字稿（由千问提供支持）', OUTPUT.parent / '网页视频转语音文稿', OUTPUT.parent / '网页视频转语音识别文字稿') and migrated.is_file():
         path = migrated.resolve()
-    if not any(root.resolve() in path.parents for root in (OUTPUT, LEGACY_OUTPUT, ROOT / 'outputs', OUTPUT.parent / '网页视频转语音文稿', OUTPUT.parent / '网页视频转语音识别文字稿')) or not path.is_file():
+    if not any(root.resolve() in path.parents for root in (OUTPUT, LEGACY_OUTPUT, ROOT / 'outputs', OUTPUT.parent / '网页视频转语音识别文字稿（由千问提供支持）', OUTPUT.parent / '网页视频转语音文稿', OUTPUT.parent / '网页视频转语音识别文字稿')) or not path.is_file():
         raise ValueError('文档不存在')
     return path
 
@@ -464,7 +474,7 @@ def delete_task(ident):
             raise
         cloud_meta=json.loads((folder/'job.json').read_text(encoding="utf-8"))
         cloud_status=cloud_meta.get('qianwen_delete_result','deleted' if cloud_meta.get('qianwen_cloud_deleted') else 'failed')
-        result=trash_task(ROOT,WORK,[OUTPUT,LEGACY_OUTPUT,ROOT/'outputs',OUTPUT.parent/'网页视频转语音文稿'],ident)
+        result=trash_task(ROOT,WORK,[OUTPUT,OUTPUT.parent/'网页视频转语音识别文字稿（由千问提供支持）',LEGACY_OUTPUT,ROOT/'outputs',OUTPUT.parent/'网页视频转语音文稿'],ident)
         pending.discard(ident);generations.pop(ident,None)
         result['deletion_result']=deletion_report(True,cloud_status)
         result['message']=result['deletion_result']['message']
@@ -978,7 +988,7 @@ class DeletionQueue:
 ```text
 <!doctype html>
 <html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>网页视频转语音识别文字稿（由千问提供支持）</title>
+<title>网页视频转文字稿（由千问提供语音识别支持）</title>
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="32x32" href="data:image/png;base64,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">
 <meta name="theme-color" content="#245491">
@@ -993,7 +1003,7 @@ body{font:16px/1.7 -apple-system,BlinkMacSystemFont,sans-serif;color:#24322d;bac
 <form id="form" autocomplete="off"><input id="url" autocomplete="off" aria-label="音视频网页链接" type="url" placeholder="粘贴YouTube、B站、小宇宙等音视频网页链接"><label id="upload-zone" tabindex="0">点击或将音视频文件拖拽到此处上传<input id="media-file" type="file" accept="audio/*,video/*,.mkv,.flac,.opus" hidden><span id="file-name"></span></label><button>开始生成文稿</button></form>
 <p class="actions"><span id="login-status" role="status">正在读取登录千问状态…</span></p><p id="message" role="status"></p>
 <p class="notice">本文稿内容为语音模型识别结果，需要注意：可能有错别字和识别不准确之处。</p>
-<p><small>Word 保存到“下载/网页视频转语音识别文字稿（由千问提供支持）”。音频将上传千问服务器；需要登录时点击上方“登录或打开千问”。完成后直接查看或打开所在位置。Word 完整性检查通过后自动将原音视频移入废纸篓并清理临时音轨。</small></p>
+<p><small>Word 保存到“下载/网页视频转文字稿（由千问提供语音识别支持）”。音频将上传千问服务器；需要登录时点击上方“登录或打开千问”。完成后直接查看或打开所在位置。Word 完整性检查通过后自动将原音视频移入废纸篓并清理临时音轨。</small></p>
 <div id="jobs"></div>
 <dialog id="runtime-dialog"><button id="runtime-close" type="button">关闭状态窗口</button><h2>后台任务状态</h2><p>关闭此窗口只隐藏显示，不会停止后台任务。页面截图每几秒更新。</p><div id="runtime-content"></div></dialog>
 <script>
@@ -1968,7 +1978,11 @@ from runtime_compat import IS_WINDOWS
 ROOT = Path(__file__).resolve().parent
 WORK = ROOT / 'work'
 LEGACY_OUTPUT = Path.home() / 'Downloads' / '音视频文稿'
-OUTPUT = Path.home() / 'Downloads' / '网页视频转语音识别文字稿（由千问提供支持）'
+OUTPUT = Path.home() / 'Downloads' / '网页视频转文字稿（由千问提供语音识别支持）'
+PREVIOUS_OUTPUT = OUTPUT.parent / '网页视频转语音识别文字稿（由千问提供支持）'
+# Preserve existing documents when upgrading an installed copy.
+if PREVIOUS_OUTPUT.is_dir() and not OUTPUT.exists():
+    PREVIOUS_OUTPUT.rename(OUTPUT)
 NOTICE = '本文稿内容为语音模型识别结果，需要注意：可能有错别字和识别不准确之处。'
 
 
@@ -2082,7 +2096,7 @@ def prepare(args):
                        'outtmpl': str(media_folder / '%(title).60s.%(ext)s'),
                        'merge_output_format': 'mkv', 'retries': 5,
                        'socket_timeout': 30, 'overwrites': False}
-            node = Path('~/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node')
+            node = Path.home() / '.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node'
             if node.exists():
                 options['js_runtimes'] = {'node': {'path': str(node)}}
             if args.cookies_browser:
@@ -4002,21 +4016,21 @@ exit $result
 ### FILE: 文件校验.json
 ```text
 {
-  ".gitignore": "3e1cfc92af2c00c9dede00b674647a334c4cd068d8d8d743780802025013e291",
-  "app.py": "15b02945764aad7e0d83ca6cce391c652f3f2782db27d7903ffa888725e079ea",
+  ".gitignore": "1d9594b7ccf0d8bf23f5b6bb67eebf9a8633b907d972ba4c9693e8d1a031a50e",
+  "app.py": "7b73c01abcb72bc63085d82939e3068dd274e76f3f1d1041e9ace4a5d2c3998e",
   "bilibili_download.py": "286ed2197bb0763f3f060aea40075d0cb4a46c1252ef19a0343358e00dd40f5d",
   "browser_service.py": "4bb4e16ac5b1f0ba53a46e3df01a55b5072f4d1dcbd3c48e745aaf55d8e5136a",
   "check_recovery.py": "7fb929eabc113b13551764fe57caa4f72e7f37f6cded04a75c590fe54e1a3d2d",
   "cloud_migration.py": "cc5c02b953f404a280f0230e836ff9a5fe04f3e7002361ef9b8b8cdc244c07a0",
   "deletion_queue.py": "f9fef20b033ab62baa5fd40b4e1ce383d4bed3c8dde54f80a468417c03dc3cad",
-  "index.html": "1efafb4064d9c2abce905ca529713de2574d24793f29c623aeb173e9579ddf97",
+  "index.html": "0bd751e2d42cb943cc7537bfd66568c126cefee63f1dd967884fd16b1bda5c6e",
   "install-windows.cmd": "181344afef4643cc95c8098d5839cdf8df98963e8d05a13991deb41c8a38c2ed",
   "install-windows.ps1": "727a49a50e928b435c2863aff20dd8b20be4b0c5662d971c71ac8a4554dbaedd",
   "install.py": "8fb062e855fb41616c65923dc4ca43808d4c710fc8919d1cb62c039a1fb2144c",
   "install.sh": "abead2c9d17bc14579905cab745be4220776c7d954a96042028c7b4855164826",
   "launch_service.py": "2cadb70ee153b678af24a6eb9e911d7e6e2ae4906ca8d3115ff8bb723d516dba",
   "qianwen_browser.py": "7b380bde0713ddc2b8717787f2e56412e1331f0ca1dec70e032ce6336f920427",
-  "reader.py": "f9dad8cc4abb0173d5f9d56c01b4d90a787a49b83c216cae86f42ada2bc53fdd",
+  "reader.py": "d0212d4ccca88ab6367be92aee6138edaa8fa4dbebaf2fcdcf430082a83dd29b",
   "requirements.txt": "ca2ed115c7d5ef1c7d63e54519aa39795e35d48d74ac5e8b7be278ccc8e7f083",
   "runtime_compat.py": "88356cfde1ee32b4a9100f48ee374ed7e5ac0ba558f6a8626dde430c10b1191f",
   "runtime_status.py": "53e0df100829fd59b385b1fbdddb8bb0da17ff0a5ba88d91c2fb4b29ba2d5c3a",

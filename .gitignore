@@ -10,3 +10,23 @@ __pycache__/
 *.log
 
 .venv.backup-*/
+
+# Local personal data and authentication state must never be published.
+*.mp3
+*.m4a
+*.mp4
+*.wav
+*.webm
+*.sqlite
+*.sqlite3
+*storage-state*
+
+# Local personal data and authentication state must never be published.
+*.mp3
+*.m4a
+*.mp4
+*.wav
+*.webm
+*.sqlite
+*.sqlite3
+*storage-state*
