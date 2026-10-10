@@ -732,7 +732,9 @@ if __name__=='__main__':main()
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/icons/app-icon.svg">
 <meta name="theme-color" content="#245491">
+<meta name="color-scheme" content="light">
 <style>
+:root{color-scheme:light !important}
 body{font:16px/1.7 -apple-system,BlinkMacSystemFont,sans-serif;color:#24322d;background:#f4f6f3;max-width:920px;margin:48px auto;padding:0 24px}h1{font-size:32px}h1 button{font-size:14px;padding:6px 10px;font-weight:normal;vertical-align:middle;white-space:nowrap}input,button,.action{font:inherit;padding:10px 14px;border:1px solid #c6d1ca;border-radius:8px}input[type=url]{flex:1;min-width:180px}button,.action{background:#245441;color:white;cursor:pointer;text-decoration:none;display:inline-block}form,.actions{display:flex;gap:12px;flex-wrap:wrap}article{background:white;padding:24px;border:1px solid #e0e7e1;border-radius:12px;margin:20px 0}small{color:#62736b}a{color:#245441}#message{color:#8b4520;white-space:pre-line}#message.success{color:#176538;background:#eaf7ee;padding:12px;border-radius:8px}#message.failure{color:#a52222;background:#fff0f0;padding:12px;border-radius:8px}.delete-result{font-weight:bold;white-space:pre-wrap}.notice{background:#fff3cd;color:#9c0006;padding:14px 18px;border-left:4px solid #b07800;font-weight:bold}.secondary{background:white;color:#245441}
 #url::placeholder{color:#757575;opacity:1}#upload-zone{background:#fff;color:#757575;font:inherit;text-align:center;border:1px dashed #c6d1ca;border-radius:8px;padding:12px 14px;cursor:pointer;flex-basis:100%;box-sizing:border-box}#file-name{display:block;font-size:14px;color:#000}#form input[type=url]{order:0}#form button{order:1}#upload-zone{order:2}#qianwen-login{background:#004B93;border-color:#004B93}#qianwen-login:hover{background:#003B75}#form button{background:#D65A00;border-color:#D65A00}#form button:hover{background:#B94D00}.retry-task{background:#FFD54F;border-color:#FFD54F;color:#24322d}.retry-task:hover{background:#FFC928;border-color:#FFC928}</style>
 <h1>网页视频转语音识别文字稿（由千问提供支持） <button type="button" id="qianwen-login">登录或打开千问</button></h1>
@@ -3145,7 +3147,7 @@ exit $result
   "app.py": "8dc02cf953ca4c9bf18d22ebb1ff4328cc8fc35bde1376992fce0dafbee339d5",
   "check_recovery.py": "7fb929eabc113b13551764fe57caa4f72e7f37f6cded04a75c590fe54e1a3d2d",
   "cloud_migration.py": "cc5c02b953f404a280f0230e836ff9a5fe04f3e7002361ef9b8b8cdc244c07a0",
-  "index.html": "fe9808caa8119f4355f774727850c50119ffbf9d2b857d96a7518871c56a7cb7",
+  "index.html": "cce837b19aa93a8426936bcf0d771818b70141982b3b1b730133af6abcdc3c3f",
   "install-windows.cmd": "181344afef4643cc95c8098d5839cdf8df98963e8d05a13991deb41c8a38c2ed",
   "install-windows.ps1": "727a49a50e928b435c2863aff20dd8b20be4b0c5662d971c71ac8a4554dbaedd",
   "install.py": "8fb062e855fb41616c65923dc4ca43808d4c710fc8919d1cb62c039a1fb2144c",
