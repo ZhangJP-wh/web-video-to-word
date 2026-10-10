@@ -350,9 +350,41 @@ def enqueue(url, engine="qianwen"):
     return ident
 
 
+submission_mutex=threading.Lock()
+
+class DuplicateTask(ValueError):
+    def __init__(self, task_numbers):
+        self.task_numbers=task_numbers
+        super().__init__('当前任务有重复；与序号 '+ '、'.join(map(str,task_numbers))+' 的任务记录重复。')
+
+def reject_duplicate(url=None, original_name=None):
+    from task_numbering import numbers
+    matches=[]
+    for record in (WORK/'jobs').glob('*/job.json'):
+        item=json.loads(record.read_text())
+        stored=item.get('original_filename')
+        if not stored and item.get('source_kind')=='local':
+            label=item.get('source_label','')
+            if label.startswith('本地上传文件：'):stored=label[len('本地上传文件：'):]
+        if (url is not None and item.get('url')==url) or (original_name is not None and stored==original_name):
+            matches.append(record.parent.name)
+    if matches:
+        ledger=numbers(WORK)
+        raise DuplicateTask(sorted(ledger[i] for i in matches))
+
+def submit_url(url, restart=False):
+    with submission_mutex:
+        if not restart:reject_duplicate(url=url)
+        return enqueue(url,'qianwen')
+
 MEDIA_EXTENSIONS={'.mp4','.mov','.mkv','.webm','.avi','.wmv','.m4v','.flv','.mp3','.wav','.m4a','.aac','.ogg','.flac','.aiff','.wma','.amr','.mpeg','.mpg','.opus'}
 
 def receive_upload(stream, length, original_name):
+    with submission_mutex:
+        reject_duplicate(original_name=Path(original_name.replace('\\','/')).name)
+        return _receive_upload(stream,length,original_name)
+
+def _receive_upload(stream, length, original_name):
     """Stream a browser-selected file into an isolated task; never move the user's original."""
     import uuid, shutil
     from reader import filename
@@ -373,7 +405,7 @@ def receive_upload(stream, length, original_name):
                 chunk=stream.read(min(1024*1024,remaining))
                 if not chunk:raise ValueError('文件上传中断，请重新选择并提交')
                 output.write(chunk);remaining-=len(chunk)
-        save_json(folder/'job.json',{'url':url,'source_kind':'local','source_label':'本地上传文件：'+name,
+        save_json(folder/'job.json',{'url':url,'source_kind':'local','source_label':'本地上传文件：'+name,'original_filename':name,
             'title':Path(name).stem,'name':filename(Path(name).stem),'media':str(target),
             'state':'queued','engine':'qianwen','created_at':time.time()})
         return enqueue(url)
@@ -453,7 +485,7 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(data,dict):raise ValueError('提交内容必须是对象')
             if self.path == '/jobs':
                 if not isinstance(data.get('url'),str):raise ValueError('请提交有效的网页链接')
-                return self.reply(200, submission_result(enqueue(data['url'].strip(), 'qianwen')))
+                return self.reply(200, submission_result(submit_url(data['url'].strip(),data.get('action')=='restart')))
             verification=re.fullmatch(r'/youtube/confirm/([0-9a-f]{12})',self.path)
             if verification:
                 from youtube_verification import confirm
@@ -478,6 +510,9 @@ class Handler(BaseHTTPRequestHandler):
                 reveal_document(match.group(1))
                 return self.reply(200, {'ok': True})
             self.reply(404, {'error': '未找到'})
+        except DuplicateTask as error:
+            self.close_connection=True
+            return self.reply(409,{'error':str(error),'duplicate':True,'task_numbers':error.task_numbers})
         except (ValueError, KeyError, OSError, subprocess.SubprocessError) as error:
             self.reply(400, {'error': str(error)})
 

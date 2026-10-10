@@ -224,3 +224,20 @@ class SynchronizedDeleteTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+class DuplicateTaskTests(unittest.TestCase):
+    def test_exact_link_and_filename_with_extension(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);job=root/'jobs/123456abcdef';job.mkdir(parents=True)
+            (job/'job.json').write_text(json.dumps({'url':'https://example.com/a?x=1','source_kind':'local','source_label':'本地上传文件：测试.MP4','created_at':1}))
+            with patch.object(app,'WORK',root):
+                with self.assertRaises(app.DuplicateTask) as caught:app.reject_duplicate(url='https://example.com/a?x=1')
+                self.assertEqual(caught.exception.task_numbers,[1])
+                with self.assertRaises(app.DuplicateTask):app.reject_duplicate(original_name='测试.MP4')
+                app.reject_duplicate(original_name='测试.mp4')
+                app.reject_duplicate(original_name='测试.mp3')
+                app.reject_duplicate(url='https://example.com/a?x=2')
+
+    def test_restart_bypasses_duplicate_guard(self):
+        with patch('app.reject_duplicate') as guard,patch('app.enqueue',return_value='task'):
+            self.assertEqual(app.submit_url('https://example.com',True),'task');guard.assert_not_called()
