@@ -27,6 +27,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate {
  }
  @objc func reload(){web.reload()}
  func applicationShouldTerminateAfterLastWindowClosed(_ sender:NSApplication)->Bool {true}
+ func webView(_ webView:WKWebView,runJavaScriptConfirmPanelWithMessage message:String,initiatedByFrame frame:WKFrameInfo,completionHandler:@escaping (Bool)->Void) {
+  let alert=NSAlert();alert.alertStyle = .warning
+  alert.messageText="请确认操作";alert.informativeText=message
+  alert.addButton(withTitle:"确认");alert.addButton(withTitle:"取消")
+  alert.buttons[1].keyEquivalent="\u{1b}"
+  alert.beginSheetModal(for:window){response in completionHandler(response == .alertFirstButtonReturn)}
+ }
+ func webView(_ webView:WKWebView,runJavaScriptAlertPanelWithMessage message:String,initiatedByFrame frame:WKFrameInfo,completionHandler:@escaping ()->Void) {
+  let alert=NSAlert();alert.messageText="工具提示";alert.informativeText=message
+  alert.addButton(withTitle:"好")
+  alert.beginSheetModal(for:window){_ in completionHandler()}
+ }
  func webView(_ webView:WKWebView,createWebViewWith configuration:WKWebViewConfiguration,for navigationAction:WKNavigationAction,windowFeatures:WKWindowFeatures)->WKWebView? {
   if let url=navigationAction.request.url {NSWorkspace.shared.open(url)}
   return nil
