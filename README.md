@@ -152,3 +152,5 @@ Windows 的 PowerShell 完整入口、Chromium 下载/启动、全部测试、pi
 自包含安装指南由 `tools/build_guides.py` 从公开源码重建，Markdown 和 Word 同步维护。
 
 本项目采用 MIT 许可证，第三方组件遵循各自许可证。
+
+失败或需要重新登录的任务提供黄色背景、深色文字的“重试任务”按钮。

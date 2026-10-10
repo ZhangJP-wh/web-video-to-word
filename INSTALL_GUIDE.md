@@ -153,6 +153,8 @@ Windows 的 PowerShell 完整入口、Chromium 下载/启动、全部测试、pi
 
 本项目采用 MIT 许可证，第三方组件遵循各自许可证。
 
+失败或需要重新登录的任务提供黄色“重试任务”按钮。
+
 ## 仅收到本文档：完整源码
 
 AI Agent 可按 FILE 标记逐个提取文件，再核对文件校验.json；运行 `bash install.sh`。仅提取这里列出的公开源码，不迁移他人的登录资料。
@@ -171,6 +173,7 @@ __pycache__/
 *.log
 
 .venv.backup-*/
+
 ```
 
 ### FILE: app.py
@@ -517,6 +520,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(403, {'error': '仅允许本机访问'})
         if self.path == '/':
             return self.reply(200, (ROOT / 'index.html').read_bytes(), 'text/html; charset=utf-8')
+        if self.path == '/manifest.webmanifest':
+            return self.reply(200, (ROOT / 'manifest.webmanifest').read_bytes(), 'application/manifest+json; charset=utf-8')
+        if self.path == '/icons/app-icon.svg':
+            return self.reply(200, (ROOT / 'icons' / 'app-icon.svg').read_bytes(), 'image/svg+xml; charset=utf-8')
         if self.path == '/health':
             return self.reply(200, {'ok': True, 'project': str(ROOT), 'pid': os.getpid(), 'engines': ['qianwen'], 'task_controls': True, 'local_upload': True, 'cloud_delete': True})
         if self.path == '/qianwen/status':
@@ -587,6 +594,7 @@ if __name__ == '__main__':
     threading.Thread(target=worker, daemon=True).start()
     print(f'网页视频转语音识别文字稿（由千问提供支持）：http://{HOST}:{PORT}', flush=True)
     server.serve_forever()
+
 ```
 
 ### FILE: check_recovery.py
@@ -653,6 +661,7 @@ def run(port):
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('--port',type=int,default=8767)
     run(parser.parse_args().port)
+
 ```
 
 ### FILE: cloud_migration.py
@@ -712,6 +721,7 @@ def main():
     save_json(WORK/'cloud-migration.json',{'ok':True,'removed_model_cache_bytes':size,'output':str(OUTPUT)})
     print('已移除本地模型及推理组件，文稿文件夹已更新。')
 if __name__=='__main__':main()
+
 ```
 
 ### FILE: index.html
@@ -719,9 +729,12 @@ if __name__=='__main__':main()
 <!doctype html>
 <html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>网页视频转语音识别文字稿（由千问提供支持）</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" type="image/svg+xml" href="/icons/app-icon.svg">
+<meta name="theme-color" content="#245491">
 <style>
 body{font:16px/1.7 -apple-system,BlinkMacSystemFont,sans-serif;color:#24322d;background:#f4f6f3;max-width:920px;margin:48px auto;padding:0 24px}h1{font-size:32px}h1 button{font-size:14px;padding:6px 10px;font-weight:normal;vertical-align:middle;white-space:nowrap}input,button,.action{font:inherit;padding:10px 14px;border:1px solid #c6d1ca;border-radius:8px}input[type=url]{flex:1;min-width:180px}button,.action{background:#245441;color:white;cursor:pointer;text-decoration:none;display:inline-block}form,.actions{display:flex;gap:12px;flex-wrap:wrap}article{background:white;padding:24px;border:1px solid #e0e7e1;border-radius:12px;margin:20px 0}small{color:#62736b}a{color:#245441}#message{color:#8b4520;white-space:pre-line}#message.success{color:#176538;background:#eaf7ee;padding:12px;border-radius:8px}#message.failure{color:#a52222;background:#fff0f0;padding:12px;border-radius:8px}.delete-result{font-weight:bold;white-space:pre-wrap}.notice{background:#fff3cd;color:#9c0006;padding:14px 18px;border-left:4px solid #b07800;font-weight:bold}.secondary{background:white;color:#245441}
-#url::placeholder{color:#757575;opacity:1}#upload-zone{background:#fff;color:#757575;font:inherit;text-align:center;border:1px dashed #c6d1ca;border-radius:8px;padding:12px 14px;cursor:pointer;flex-basis:100%;box-sizing:border-box}#file-name{display:block;font-size:14px;color:#000}#form input[type=url]{order:0}#form button{order:1}#upload-zone{order:2}#qianwen-login{background:#004B93;border-color:#004B93}#qianwen-login:hover{background:#003B75}#form button{background:#D65A00;border-color:#D65A00}#form button:hover{background:#B94D00}</style>
+#url::placeholder{color:#757575;opacity:1}#upload-zone{background:#fff;color:#757575;font:inherit;text-align:center;border:1px dashed #c6d1ca;border-radius:8px;padding:12px 14px;cursor:pointer;flex-basis:100%;box-sizing:border-box}#file-name{display:block;font-size:14px;color:#000}#form input[type=url]{order:0}#form button{order:1}#upload-zone{order:2}#qianwen-login{background:#004B93;border-color:#004B93}#qianwen-login:hover{background:#003B75}#form button{background:#D65A00;border-color:#D65A00}#form button:hover{background:#B94D00}.retry-task{background:#FFD54F;border-color:#FFD54F;color:#24322d}.retry-task:hover{background:#FFC928;border-color:#FFC928}</style>
 <h1>网页视频转语音识别文字稿（由千问提供支持） <button type="button" id="qianwen-login">登录或打开千问</button></h1>
 <p>粘贴网页链接，后台下载并默认交给千问识别语音、区分发言人，生成带时间戳、以视频标题命名的 Word。</p>
 <form id="form" autocomplete="off"><input id="url" autocomplete="off" aria-label="音视频网页链接" type="url" placeholder="粘贴YouTube、B站、小宇宙等音视频网页链接"><label id="upload-zone" tabindex="0">点击或将音视频文件拖拽到此处上传<input id="media-file" type="file" accept="audio/*,video/*,.mkv,.flac,.opus" hidden><span id="file-name"></span></label><button>开始生成文稿</button></form>
@@ -752,9 +765,10 @@ urlInput.oninput=()=>{if(urlInput.value){selectedFile=null;picker.value='';docum
 document.querySelector('#form').onsubmit=async e=>{e.preventDefault();try{if('qianwen'==='qianwen'){let health=await(await fetch('/health')).json();if(!health.engines?.includes('qianwen'))throw Error('网页服务需要加载新版。请完成登录千问配置后再试。')}if(selectedFile){let h=await(await fetch('/health')).json();if(!h.local_upload)throw Error('请双击“加载本次更新.command”启用本地文件入口。');let button=document.querySelector('#form button');button.disabled=true;msg.textContent='正在将文件交给本机后台，请稍候…';try{let r=await fetch('/upload',{method:'POST',headers:{'Content-Type':'application/octet-stream','X-File-Name':encodeURIComponent(selectedFile.name)},body:selectedFile});let j=await r.json();if(!r.ok)throw Error(j.error)}finally{button.disabled=false}}else{if(!urlInput.value.trim())throw Error('请粘贴链接或选择音视频文件');await post('/jobs',{url:urlInput.value,engine:'qianwen'})}deletedTaskIds.clear();selectedFile=null;picker.value='';document.querySelector('#file-name').textContent='';document.querySelector('#url').value='';msg.textContent='已加入后台队列。你可以继续做其他事情，稍后回来查看文稿。';await refresh()}catch(e){msg.textContent=e.message}};
 function taskHeading(j){let title=j.title;if(j.state==='queued')return '待处理 · '+(title||'正在获取标题（'+new URL(j.url).hostname+' / '+(new URL(j.url).searchParams.get('v')||new URL(j.url).pathname.split('/').filter(Boolean).pop()||j.id)+'）');return title||'正在获取标题 · '+j.id}
 function link(text,url,style){let a=document.createElement('a');a.textContent=text;a.href=url;if(style)a.className=style;return a}
-async function refresh(){const sequence=++refreshSequence;try{let jobs=await(await fetch('/jobs')).json();if(sequence!==refreshSequence)return;jobs=jobs.filter(j=>!deletedTaskIds.has(j.id));jobs.sort((a,b)=>(b.created_at??historicalTaskTimes[b.id]??b.added_at??Infinity)-(a.created_at??historicalTaskTimes[a.id]??a.added_at??Infinity));let host=document.querySelector('#jobs');host.replaceChildren();for(let j of jobs){let card=document.createElement('article');card.dataset.taskId=j.id;let h=document.createElement('h2');h.textContent=taskHeading(j);card.append(h);let p=document.createElement('p');p.textContent=(j.document&&!j.has_document)?'Word 文件已不在原保存位置，重新提交链接可生成':(stages[j.state]||'状态暂未识别：'+String(j.state));card.append(p);if(j.source_kind==='local'){let source=document.createElement('p');source.textContent=j.source_label;card.append(source)}else card.append(link('原网页',j.url));let deletion=deletionResults.get(j.id)||j.deletion_result;if(deletion){let status=document.createElement('p');status.className='delete-result';status.setAttribute('role','alert');status.style.color=deletion.status==='failed'?'#a52222':'#8b4520';renderDeletionResult(status,deletion);card.append(status)}if(j.error){let err=document.createElement('p');err.textContent=j.error;card.append(err)}if(j.cleanup_error){let note=document.createElement('p');note.textContent='Word 已生成，但部分临时文件未清理：'+j.cleanup_error;card.append(note)}if(j.has_document){let actions=document.createElement('p');actions.className='actions';actions.append(link('查看 Word 文稿','/preview/'+j.id,'action'));let reveal=document.createElement('button');reveal.type='button';reveal.className='secondary';reveal.textContent='打开文档所在位置';let revealStatus=document.createElement('small');revealStatus.setAttribute('role','status');reveal.onclick=async()=>{reveal.disabled=true;revealStatus.textContent='正在打开文件夹…';try{await post('/reveal/'+j.id,{});revealStatus.textContent='已打开 Finder 文件夹。';msg.textContent='已打开文档所在的 Finder 文件夹。'}catch(e){revealStatus.textContent='打开失败：'+e.message;msg.textContent='打开失败：'+e.message}finally{reveal.disabled=false}};actions.append(reveal);actions.append(revealStatus);card.append(actions);let note=document.createElement('small');note.textContent=j.temporary_files_removed?(j.media_trashed?'原音视频已移入废纸篓，临时音轨已清理。':'原音视频与临时音轨已清理。'):'Word 内容未经人工校对。';card.append(note)}let controls=document.createElement('p');controls.className='actions';if(j.state==='failed'||j.state==='login_required'){let retry=document.createElement('button');retry.textContent='重试任务';retry.onclick=async()=>{try{await post('/jobs',{url:j.url,engine:'qianwen'});await refresh()}catch(e){msg.textContent=e.message}};controls.append(retry)}let remove=document.createElement('button');remove.type='button';remove.className='secondary';remove.style.color='#a52222';remove.textContent='删除任务并同步到千问';if(deletion?.status==='pending'){remove.disabled=true;remove.textContent='正在同步删除…'}remove.onclick=async()=>{if(!confirm('删除“'+(j.title||j.id)+'”？将停止该任务，把本机任务文件和相关文稿移入废纸篓。同时删除对应的千问云端记录，云端删除后无法恢复。'))return;deletionResults.set(j.id,{status:'pending',message:'正在删除并同步到千问，请稍候…'});msg.className='';msg.textContent='正在删除并同步到千问，请稍候…';remove.disabled=true;remove.textContent='正在同步删除…';try{let health=await(await fetch('/health')).json();if(!health.cloud_delete)throw Error('请先双击加载本次更新.command启用千问同步删除');await requireControls();let r=await post('/delete/'+j.id,{});deletedTaskIds.add(j.id);++refreshSequence;document.querySelectorAll('article[data-task-id="'+j.id+'"]').forEach(node=>node.remove());deletionResults.delete(j.id);showDeletionResult(r.deletion_result||{status:'success',message:r.message},true);await refresh()}catch(e){let message=e.deletionResult?.message||('删除失败\n工具任务列表记录：未删除成功\n本机文稿及任务文件：未确认删除成功\n对应的千问记录：未确认删除成功\n原因：'+e.message);let report=e.deletionResult||{status:'failed',message};deletionResults.set(j.id,report);showDeletionResult(report,false);let status=card.querySelector('.delete-result');if(!status){status=document.createElement('p');status.className='delete-result';status.setAttribute('role','alert');card.append(status)}status.style.color='#a52222';renderDeletionResult(status,report);remove.disabled=false;remove.textContent='删除任务并同步到千问'}};if(j.has_document){card.querySelector('.actions').append(remove)}else{controls.append(remove)}if(controls.children.length)card.append(controls);host.append(card)}await refreshLogin()}catch(e){msg.textContent='后台连接中断，请重新启动工具。'}}
+async function refresh(){const sequence=++refreshSequence;try{let jobs=await(await fetch('/jobs')).json();if(sequence!==refreshSequence)return;jobs=jobs.filter(j=>!deletedTaskIds.has(j.id));jobs.sort((a,b)=>(b.created_at??historicalTaskTimes[b.id]??b.added_at??Infinity)-(a.created_at??historicalTaskTimes[a.id]??a.added_at??Infinity));let host=document.querySelector('#jobs');host.replaceChildren();for(let j of jobs){let card=document.createElement('article');card.dataset.taskId=j.id;let h=document.createElement('h2');h.textContent=taskHeading(j);card.append(h);let p=document.createElement('p');p.textContent=(j.document&&!j.has_document)?'Word 文件已不在原保存位置，重新提交链接可生成':(stages[j.state]||'状态暂未识别：'+String(j.state));card.append(p);if(j.source_kind==='local'){let source=document.createElement('p');source.textContent=j.source_label;card.append(source)}else card.append(link('原网页',j.url));let deletion=deletionResults.get(j.id)||j.deletion_result;if(deletion){let status=document.createElement('p');status.className='delete-result';status.setAttribute('role','alert');status.style.color=deletion.status==='failed'?'#a52222':'#8b4520';renderDeletionResult(status,deletion);card.append(status)}if(j.error){let err=document.createElement('p');err.textContent=j.error;card.append(err)}if(j.cleanup_error){let note=document.createElement('p');note.textContent='Word 已生成，但部分临时文件未清理：'+j.cleanup_error;card.append(note)}if(j.has_document){let actions=document.createElement('p');actions.className='actions';actions.append(link('查看 Word 文稿','/preview/'+j.id,'action'));let reveal=document.createElement('button');reveal.type='button';reveal.className='secondary';reveal.textContent='打开文档所在位置';let revealStatus=document.createElement('small');revealStatus.setAttribute('role','status');reveal.onclick=async()=>{reveal.disabled=true;revealStatus.textContent='正在打开文件夹…';try{await post('/reveal/'+j.id,{});revealStatus.textContent='已打开 Finder 文件夹。';msg.textContent='已打开文档所在的 Finder 文件夹。'}catch(e){revealStatus.textContent='打开失败：'+e.message;msg.textContent='打开失败：'+e.message}finally{reveal.disabled=false}};actions.append(reveal);actions.append(revealStatus);card.append(actions);let note=document.createElement('small');note.textContent=j.temporary_files_removed?(j.media_trashed?'原音视频已移入废纸篓，临时音轨已清理。':'原音视频与临时音轨已清理。'):'Word 内容未经人工校对。';card.append(note)}let controls=document.createElement('p');controls.className='actions';if(j.state==='failed'||j.state==='login_required'){let retry=document.createElement('button');retry.textContent='重试任务';retry.className='retry-task';retry.onclick=async()=>{try{await post('/jobs',{url:j.url,engine:'qianwen'});await refresh()}catch(e){msg.textContent=e.message}};controls.append(retry)}let remove=document.createElement('button');remove.type='button';remove.className='secondary';remove.style.color='#a52222';remove.textContent='删除任务并同步到千问';if(deletion?.status==='pending'){remove.disabled=true;remove.textContent='正在同步删除…'}remove.onclick=async()=>{if(!confirm('删除“'+(j.title||j.id)+'”？将停止该任务，把本机任务文件和相关文稿移入废纸篓。同时删除对应的千问云端记录，云端删除后无法恢复。'))return;deletionResults.set(j.id,{status:'pending',message:'正在删除并同步到千问，请稍候…'});msg.className='';msg.textContent='正在删除并同步到千问，请稍候…';remove.disabled=true;remove.textContent='正在同步删除…';try{let health=await(await fetch('/health')).json();if(!health.cloud_delete)throw Error('请先双击加载本次更新.command启用千问同步删除');await requireControls();let r=await post('/delete/'+j.id,{});deletedTaskIds.add(j.id);++refreshSequence;document.querySelectorAll('article[data-task-id="'+j.id+'"]').forEach(node=>node.remove());deletionResults.delete(j.id);showDeletionResult(r.deletion_result||{status:'success',message:r.message},true);await refresh()}catch(e){let message=e.deletionResult?.message||('删除失败\n工具任务列表记录：未删除成功\n本机文稿及任务文件：未确认删除成功\n对应的千问记录：未确认删除成功\n原因：'+e.message);let report=e.deletionResult||{status:'failed',message};deletionResults.set(j.id,report);showDeletionResult(report,false);let status=card.querySelector('.delete-result');if(!status){status=document.createElement('p');status.className='delete-result';status.setAttribute('role','alert');card.append(status)}status.style.color='#a52222';renderDeletionResult(status,report);remove.disabled=false;remove.textContent='删除任务并同步到千问'}};if(j.has_document){card.querySelector('.actions').append(remove)}else{controls.append(remove)}if(controls.children.length)card.append(controls);host.append(card)}await refreshLogin()}catch(e){msg.textContent='后台连接中断，请重新启动工具。'}}
 refresh();setInterval(refresh,6000);
 </script></html>
+
 ```
 
 ### FILE: install-windows.cmd
@@ -766,6 +780,7 @@ set "install_result=%errorlevel%"
 if not "%install_result%"=="0" echo Installation failed. See README: Windows manual fallback. Do not disable security or execution policy.
 pause
 exit /b %install_result%
+
 ```
 
 ### FILE: install-windows.ps1
@@ -834,6 +849,7 @@ try {
     Write-Host "未完成：$_" -ForegroundColor Red
     exit 1
 }
+
 ```
 
 ### FILE: install.py
@@ -1037,6 +1053,7 @@ if __name__ == '__main__':
         main()
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
         raise SystemExit(f'未完成：{error}\n修复上述问题后重新运行系统对应的安装入口；不要提交 work、日志或登录资料。')
+
 ```
 
 ### FILE: install.sh
@@ -1074,6 +1091,7 @@ if ! node_ok; then
   exit 1
 fi
 exec python3.12 install.py "$@"
+
 ```
 
 ### FILE: launch_service.py
@@ -1211,6 +1229,7 @@ if __name__ == '__main__':
         main()
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
         raise SystemExit(f'未完成：{error}。若系统限制操作，请从 Finder 双击自动启动设置文件。')
+
 ```
 
 ### FILE: qianwen_browser.py
@@ -1535,6 +1554,7 @@ if __name__ == '__main__':
         if not args.job or not re.fullmatch('[0-9a-f]{12}',args.job):parser.error('任务编号不合法')
         delete_cloud(ROOT/'work/jobs'/args.job)
     else:login(ui=args.command=='login-ui')
+
 ```
 
 ### FILE: reader.py
@@ -1908,6 +1928,7 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 ```
 
 ### FILE: requirements.txt
@@ -1922,6 +1943,7 @@ certifi
 
 portalocker>=3,<4; sys_platform == "win32"
 psutil>=6,<8; sys_platform == "win32"
+
 ```
 
 ### FILE: runtime_compat.py
@@ -1960,6 +1982,7 @@ if IS_WINDOWS:
     file_lock = FileLock
 else:
     import fcntl as file_lock
+
 ```
 
 ### FILE: smoke_qianwen.py
@@ -2023,6 +2046,7 @@ def main():
 
 
 if __name__=='__main__':raise SystemExit(main())
+
 ```
 
 ### FILE: smoke_qianwen_runner.py
@@ -2044,6 +2068,7 @@ while time.monotonic()<end:
         subprocess.run([sys.executable,str(ROOT/'smoke_qianwen.py')])
         print('测试结果已保存。保留此窗口即可，接下来十分钟内可后台重试；按Ctrl+C结束。',flush=True)
     time.sleep(1)
+
 ```
 
 ### FILE: start-windows.cmd
@@ -2054,6 +2079,7 @@ powershell.exe -NoProfile -File "%~dp0install-windows.ps1" -StartOnly -Open %*
 set "install_result=%errorlevel%"
 if not "%install_result%"=="0" pause
 exit /b %install_result%
+
 ```
 
 ### FILE: task_controls.py
@@ -2174,6 +2200,7 @@ def trash_task(root, work, output_roots, ident):
             lock.close()
         send2trash(str(folder.resolve()))
     return {'ok':True,'message':'本机任务与相关文件已移入废纸篓。千问云端记录需在千问网页中管理。'}
+
 ```
 
 ### FILE: test_app.py
@@ -2377,6 +2404,7 @@ class SynchronizedDeleteTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
 ```
 
 ### FILE: test_install.py
@@ -2468,6 +2496,7 @@ class InstallerTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
 ```
 
 ### FILE: test_qianwen.py
@@ -2672,6 +2701,7 @@ class CloudDeleteSafetyTests(unittest.TestCase):
         self.assertFalse(meta.get('qianwen_cloud_deleted',False))
 
 if __name__=='__main__':unittest.main()
+
 ```
 
 ### FILE: test_reader.py
@@ -2834,6 +2864,7 @@ class DownloadLinkTests(unittest.TestCase):
     def test_invalid_douyin_id_is_untouched(self):
         source='https://www.douyin.com/jingxuan?modal_id=invalid'
         self.assertEqual(reader.download_url(source),source)
+
 ```
 
 ### FILE: test_runtime_compat.py
@@ -2909,6 +2940,7 @@ class CompatibilityTests(unittest.TestCase):
                 self.assertEqual(target.read_bytes(),b'ffmpeg')
 
 if __name__ == '__main__':unittest.main()
+
 ```
 
 ### FILE: test_task_controls.py
@@ -2988,6 +3020,7 @@ class TaskControlTests(unittest.TestCase):
             page.get_by_role.assert_any_call('button',name=name,exact=True)
 
 if __name__=='__main__':unittest.main()
+
 ```
 
 ### FILE: tools/build_guides.py
@@ -3024,6 +3057,7 @@ for line in text.splitlines():
     else: doc.add_paragraph(line)
 doc.save(ROOT/'安装与使用指南.docx')
 print(f'Rebuilt guides with {len(files)} public source files.')
+
 ```
 
 ### FILE: 停用自动启动.command
@@ -3034,6 +3068,7 @@ cd "${0:A:h}" || exit 1
 result=$?
 read 'reply?按回车关闭窗口。'
 exit $result
+
 ```
 
 ### FILE: 切换千问并清理本地模型.command
@@ -3054,6 +3089,7 @@ else
  print '已完成千问专用版切换。刷新工具页面即可。'
 fi
 read '?按回车关闭窗口。'
+
 ```
 
 ### FILE: 加载本次更新.command
@@ -3077,6 +3113,7 @@ PY
 result=$?
 read '?按回车关闭窗口。'
 exit "$result"
+
 ```
 
 ### FILE: 启动工具.command
@@ -3087,6 +3124,7 @@ cd "${0:A:h}" || exit 1
 result=$?
 if (( result != 0 )); then read 'reply?请按上方提示处理；按回车关闭窗口。'; fi
 exit $result
+
 ```
 
 ### FILE: 启用自动启动.command
@@ -3097,65 +3135,17 @@ cd "${0:A:h}" || exit 1
 result=$?
 read 'reply?按回车关闭窗口。'
 exit $result
-```
 
-### FILE: 测试千问后台流程.command
-```text
-#!/bin/zsh
-cd -- "${0:A:h}" || exit 1
-export SSL_CERT_FILE=/etc/ssl/cert.pem
-export NODE_EXTRA_CA_CERTS=/etc/ssl/cert.pem
-.venv/bin/python smoke_qianwen_runner.py
-result=$?
-read '?测试结束，按回车关闭窗口。'
-exit "$result"
-```
-
-### FILE: 自动恢复测试.command
-```text
-#!/bin/zsh
-cd "${0:A:h}" || exit 1
-.venv/bin/python check_recovery.py --port 8767
-result=$?
-read 'reply?按回车关闭窗口。'
-exit $result
-```
-
-### FILE: 配置千问登录.command
-```text
-#!/bin/zsh
-cd -- "${0:A:h}" || exit 1
-export SSL_CERT_FILE=/etc/ssl/cert.pem
-export PIP_CERT=/etc/ssl/cert.pem
-export NODE_EXTRA_CA_CERTS=/etc/ssl/cert.pem
-export PLAYWRIGHT_BROWSERS_PATH="$PWD/work/browser-bin"
-.venv/bin/python -m pip install playwright || exit 1
-.venv/bin/python -m playwright install chromium || exit 1
-.venv/bin/python qianwen_browser.py login || exit 1
-/bin/launchctl kill SIGTERM "gui/$(id -u)/com.zhangjp.web-video-to-word" 2>/dev/null || true
-echo "登录配置完成。如已启用自动启动，服务将自动加载新版。"
-read '?按回车关闭窗口。'
-```
-
-### FILE: 首次安装.command
-```text
-#!/bin/zsh
-cd "${0:A:h}" || exit 1
-/bin/bash install.sh --open
-result=$?
-if (( result != 0 )); then print '安装未完成，请按上方“下一步”操作后重试。'; fi
-read 'reply?按回车关闭窗口。'
-exit $result
 ```
 
 ### FILE: 文件校验.json
 ```text
 {
   ".gitignore": "3e1cfc92af2c00c9dede00b674647a334c4cd068d8d8d743780802025013e291",
-  "app.py": "2f50b21a88ee54e1a45c9d522ba52c59c0729d6ce712835fc029936214848f34",
+  "app.py": "8dc02cf953ca4c9bf18d22ebb1ff4328cc8fc35bde1376992fce0dafbee339d5",
   "check_recovery.py": "7fb929eabc113b13551764fe57caa4f72e7f37f6cded04a75c590fe54e1a3d2d",
   "cloud_migration.py": "cc5c02b953f404a280f0230e836ff9a5fe04f3e7002361ef9b8b8cdc244c07a0",
-  "index.html": "6dd9e443ec67aed7db67deeaec104d47a4306608018c1e71e02dd4de2d5590b2",
+  "index.html": "fe9808caa8119f4355f774727850c50119ffbf9d2b857d96a7518871c56a7cb7",
   "install-windows.cmd": "181344afef4643cc95c8098d5839cdf8df98963e8d05a13991deb41c8a38c2ed",
   "install-windows.ps1": "727a49a50e928b435c2863aff20dd8b20be4b0c5662d971c71ac8a4554dbaedd",
   "install.py": "8fb062e855fb41616c65923dc4ca43808d4c710fc8919d1cb62c039a1fb2144c",
@@ -3186,5 +3176,59 @@ exit $result
   "配置千问登录.command": "3bc9b14516ab4c169b0cd7a9c595778965167f7f7ce533eab5ad7b3abd835fac",
   "首次安装.command": "79eb3d678dd13a8115cfba58933713a6557929264a79b7e5143ee65c35987fb0"
 }
+
+```
+
+### FILE: 测试千问后台流程.command
+```text
+#!/bin/zsh
+cd -- "${0:A:h}" || exit 1
+export SSL_CERT_FILE=/etc/ssl/cert.pem
+export NODE_EXTRA_CA_CERTS=/etc/ssl/cert.pem
+.venv/bin/python smoke_qianwen_runner.py
+result=$?
+read '?测试结束，按回车关闭窗口。'
+exit "$result"
+
+```
+
+### FILE: 自动恢复测试.command
+```text
+#!/bin/zsh
+cd "${0:A:h}" || exit 1
+.venv/bin/python check_recovery.py --port 8767
+result=$?
+read 'reply?按回车关闭窗口。'
+exit $result
+
+```
+
+### FILE: 配置千问登录.command
+```text
+#!/bin/zsh
+cd -- "${0:A:h}" || exit 1
+export SSL_CERT_FILE=/etc/ssl/cert.pem
+export PIP_CERT=/etc/ssl/cert.pem
+export NODE_EXTRA_CA_CERTS=/etc/ssl/cert.pem
+export PLAYWRIGHT_BROWSERS_PATH="$PWD/work/browser-bin"
+.venv/bin/python -m pip install playwright || exit 1
+.venv/bin/python -m playwright install chromium || exit 1
+.venv/bin/python qianwen_browser.py login || exit 1
+/bin/launchctl kill SIGTERM "gui/$(id -u)/com.zhangjp.web-video-to-word" 2>/dev/null || true
+echo "登录配置完成。如已启用自动启动，服务将自动加载新版。"
+read '?按回车关闭窗口。'
+
+```
+
+### FILE: 首次安装.command
+```text
+#!/bin/zsh
+cd "${0:A:h}" || exit 1
+/bin/bash install.sh --open
+result=$?
+if (( result != 0 )); then print '安装未完成，请按上方“下一步”操作后重试。'; fi
+read 'reply?按回车关闭窗口。'
+exit $result
+
 ```
 
