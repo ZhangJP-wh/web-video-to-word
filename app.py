@@ -136,7 +136,8 @@ def worker():
                         time.sleep(2)
             with (folder / 'run.log').open('ab') as log:
                 result = subprocess.run([str(ROOT / '.venv/bin/python'), str(ROOT / 'reader.py'),
-                                        'prepare', url], stdout=log, stderr=log)
+                                        'prepare', url, '--engine',
+                                        json.loads((folder/'job.json').read_text()).get('engine', 'local')], stdout=log, stderr=log)
             if result.returncode == 0:
                 (folder / 'run.log').unlink(missing_ok=True)
         finally:
@@ -145,7 +146,9 @@ def worker():
             tasks.task_done()
 
 
-def enqueue(url):
+def enqueue(url, engine="local"):
+    if engine not in ("local", "qianwen"):
+        raise ValueError("不支持的语音识别方式")
     if urlparse(url).scheme not in ('http', 'https') or not urlparse(url).hostname:
         raise ValueError('请输入完整的 HTTP/HTTPS 视频页面链接')
     ident = hashlib.sha256(url.encode()).hexdigest()[:12]
@@ -164,7 +167,7 @@ def enqueue(url):
             except BlockingIOError:
                 return ident
             meta.setdefault('created_at', task_created_at(folder))
-            meta.update(url=url, state='queued')
+            meta.update(url=url, state='queued', engine=engine)
             meta.pop('error', None)
             save_json(folder / 'job.json', meta)
         pending.add(ident)
@@ -194,7 +197,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == '/':
             return self.reply(200, (ROOT / 'index.html').read_bytes(), 'text/html; charset=utf-8')
         if self.path == '/health':
-            return self.reply(200, {'ok': True, 'project': str(ROOT), 'pid': os.getpid()})
+            return self.reply(200, {'ok': True, 'project': str(ROOT), 'pid': os.getpid(), 'engines': ['local', 'qianwen']})
         if self.path == '/jobs':
             return self.reply(200, list_jobs())
         match = re.fullmatch(r'/(document|preview)/([0-9a-f]{12})', self.path)
@@ -224,7 +227,7 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError('提交内容为空或过大')
             data = json.loads(self.rfile.read(length))
             if self.path == '/jobs':
-                return self.reply(200, {'id': enqueue(data['url'].strip())})
+                return self.reply(200, {'id': enqueue(data['url'].strip(), data.get('engine', 'local'))})
             match = re.fullmatch(r'/reveal/([0-9a-f]{12})', self.path)
             if match:
                 reveal_document(match.group(1))

@@ -10,7 +10,6 @@ import sys
 import unicodedata
 import wave
 import time
-import shutil
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -221,9 +220,10 @@ def prepare(args):
                        'outtmpl': str(media_folder / '%(title).60s.%(ext)s'),
                        'merge_output_format': 'mkv', 'retries': 5,
                        'socket_timeout': 30, 'overwrites': False}
-            node = shutil.which('node')
-            if node:
-                options['js_runtimes'] = {'node': {'path': node}}
+            import shutil
+            node = Path(shutil.which('node') or '/nonexistent')
+            if node.exists():
+                options['js_runtimes'] = {'node': {'path': str(node)}}
             if args.cookies_browser:
                 options['cookiesfrombrowser'] = (args.cookies_browser,)
             if not meta.get('media') or not Path(meta['media']).exists():
@@ -266,8 +266,13 @@ def prepare(args):
             os.environ.setdefault('SSL_CERT_FILE', '/etc/ssl/cert.pem')
             raw_path = job / 'raw-transcript.json'
             raw = json.loads(raw_path.read_text()) if raw_path.exists() else {}
-            if raw.get('model') != args.model:
-                raw = transcribe_qwen(wav, job, meta, args.model)
+            wanted_model = 'qianwen-web' if getattr(args, 'engine', 'local') == 'qianwen' else args.model
+            if raw.get('model') != wanted_model:
+                if wanted_model == 'qianwen-web':
+                    from qianwen_browser import export_audio
+                    raw = export_audio(wav, job, meta, save_json)
+                else:
+                    raw = transcribe_qwen(wav, job, meta, args.model)
                 save_json(raw_path, raw)
             build_document(job, raw)
             print(f'Word 已生成：{job}', flush=True)
@@ -429,6 +434,7 @@ def main():
     sub = parser.add_subparsers(dest='command', required=True)
     prep = sub.add_parser('prepare')
     prep.add_argument('url')
+    prep.add_argument('--engine', choices=['local', 'qianwen'], default='local')
     prep.add_argument('--cookies-browser', choices=['chrome', 'safari', 'firefox', 'edge'])
     prep.add_argument('--model', choices=['Qwen/Qwen3-ASR-1.7B'], default='Qwen/Qwen3-ASR-1.7B')
     export = sub.add_parser('export', help='从已有识别结果生成 Word')

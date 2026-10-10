@@ -1,11 +1,11 @@
 {
   "date": "2026-10-07",
-  "source_files": 16,
+  "source_files": 19,
   "source_sha256_verified": true,
   "markdown_source_roundtrip": true,
   "word_full_source_roundtrip": true,
   "unit_tests": {
-    "passed": 10,
+    "passed": 14,
     "environment": "existing Apple M2 macOS Python 3.12 environment; ASR mocked"
   },
   "python_compile": true,

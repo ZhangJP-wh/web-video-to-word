@@ -166,6 +166,14 @@ curl --fail --location 'https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen3-AS
 卸载：先停用自动启动，并确认识别子进程已完成后，把 VideoTranscript 文件夹移入废纸篓。输出 Word 文件夹是独立的，想保留就不要删除。Python 和 Node 可能被其他软件使用，不要因为卸载本工具就自动卸载它们。
 
 
+### 千问网页识别（实验性可选功能）
+
+页面的识别方式可以选择“千问网页”。首次双击项目中的“配置千问登录.command”，安装官方 Playwright/Chromium 后，在工具专用浏览器中登录千问，回到终端按回车。登录资料保存在本机 work/qianwen-browser-profile，不上传 GitHub。后续任务使用无窗口浏览器，音频会上传千问服务器。
+
+设置固定为中英文自由说、不翻译、多人讨论；只导出原文 Word，必须包含发言人和时间戳。导出后生成本项目格式的 Word，并执行原有文档检查和废纸篓清理。千问网页单文件上限为6小时，音频500MB；工具使用64kbps MP3上传。网站额度、验证码、登录失效、页面变化可能中断，此时保留原媒体并显示失败，不绕过验证码、不自动购买额度。
+
+当前验证：已通过 Codex 隐藏浏览器完成20秒音频上传、转写和带发言人/时间戳的原文Word导出；真实导出解析与14项程序测试通过。**专用无窗口浏览器的完整流程尚未实测，不能视为已验证的全自动功能。**首次专用浏览器登录后，应先测试短视频再处理长视频。本地模型仍是默认选项，已有任务不自动切换。
+
 ### 7.1 登录自动启动与异常恢复
 
 双击“自动恢复测试.command”可以实测异常恢复：脚本停止本工具的网页服务，等待最多 45 秒，检查新服务进程和原识别进程。结果保存到 work/recovery-test.json。测试只检查网页服务恢复，不模拟电脑重启，也不检查文稿准确率。
@@ -240,7 +248,7 @@ df -h "$HOME"
 
 ### A2：源码准备
 
-有源码 ZIP 就解压至目标目录；只有本文则运行第 11 节提取程序。先验证 文件校验.json；源码应不包含 /Users/你的用户名 的专用路径、个人历史任务 ID、个人 job.json、Cookie、.venv 或 work/model-cache。附录源码仅用于建立朋友电脑上的副本，不修改分享者正在运行的工具。
+有源码 ZIP 就解压至目标目录；只有本文则运行第 11 节提取程序。先验证 文件校验.json；源码应不包含 ~ 的专用路径、个人历史任务 ID、个人 job.json、Cookie、.venv 或 work/model-cache。附录源码仅用于建立朋友电脑上的副本，不修改分享者正在运行的工具。
 
 ### A3：安装与下载
 
@@ -464,7 +472,8 @@ def worker():
                         time.sleep(2)
             with (folder / 'run.log').open('ab') as log:
                 result = subprocess.run([str(ROOT / '.venv/bin/python'), str(ROOT / 'reader.py'),
-                                        'prepare', url], stdout=log, stderr=log)
+                                        'prepare', url, '--engine',
+                                        json.loads((folder/'job.json').read_text()).get('engine', 'local')], stdout=log, stderr=log)
             if result.returncode == 0:
                 (folder / 'run.log').unlink(missing_ok=True)
         finally:
@@ -473,7 +482,9 @@ def worker():
             tasks.task_done()
 
 
-def enqueue(url):
+def enqueue(url, engine="local"):
+    if engine not in ("local", "qianwen"):
+        raise ValueError("不支持的语音识别方式")
     if urlparse(url).scheme not in ('http', 'https') or not urlparse(url).hostname:
         raise ValueError('请输入完整的 HTTP/HTTPS 视频页面链接')
     ident = hashlib.sha256(url.encode()).hexdigest()[:12]
@@ -492,7 +503,7 @@ def enqueue(url):
             except BlockingIOError:
                 return ident
             meta.setdefault('created_at', task_created_at(folder))
-            meta.update(url=url, state='queued')
+            meta.update(url=url, state='queued', engine=engine)
             meta.pop('error', None)
             save_json(folder / 'job.json', meta)
         pending.add(ident)
@@ -522,7 +533,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == '/':
             return self.reply(200, (ROOT / 'index.html').read_bytes(), 'text/html; charset=utf-8')
         if self.path == '/health':
-            return self.reply(200, {'ok': True, 'project': str(ROOT), 'pid': os.getpid()})
+            return self.reply(200, {'ok': True, 'project': str(ROOT), 'pid': os.getpid(), 'engines': ['local', 'qianwen']})
         if self.path == '/jobs':
             return self.reply(200, list_jobs())
         match = re.fullmatch(r'/(document|preview)/([0-9a-f]{12})', self.path)
@@ -552,7 +563,7 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError('提交内容为空或过大')
             data = json.loads(self.rfile.read(length))
             if self.path == '/jobs':
-                return self.reply(200, {'id': enqueue(data['url'].strip())})
+                return self.reply(200, {'id': enqueue(data['url'].strip(), data.get('engine', 'local'))})
             match = re.fullmatch(r'/reveal/([0-9a-f]{12})', self.path)
             if match:
                 reveal_document(match.group(1))
@@ -582,17 +593,17 @@ body{font:16px/1.7 -apple-system,BlinkMacSystemFont,sans-serif;color:#24322d;bac
 </style>
 <h1>网页视频转语音识别文字稿</h1>
 <p>粘贴网页链接，后台下载并用 Qwen3-ASR-1.7B 识别语音，自动区分发言人，生成带时间戳、以视频标题命名的 Word。</p>
-<form id="form"><input id="url" aria-label="音视频网页链接" type="url" required placeholder="粘贴 YouTube、哔哩哔哩等音视频网页链接"><button>开始生成文稿</button></form>
+<form id="form"><input id="url" aria-label="音视频网页链接" type="url" required placeholder="粘贴 YouTube、哔哩哔哩等音视频网页链接"><select id="engine" aria-label="识别方式"><option value="local">本地模型</option><option value="qianwen">千问网页（需首次配置登录）</option></select><button>开始生成文稿</button></form>
 <p id="message" role="status"></p>
 <p class="notice">本文稿内容为语音模型识别结果，需要注意：可能有错别字和识别不准确之处。</p>
-<p><small>Word 保存到“下载/网页视频转语音识别文字稿”。无需提交给其他 AI；完成后直接查看或打开所在位置。Word 完整性检查通过后自动将原音视频移入废纸篓并清理临时音轨。</small></p>
+<p><small>Word 保存到“下载/网页视频转语音识别文字稿”。选择千问时，音频将上传千问服务器；首次双击“配置千问登录.command”登录。完成后直接查看或打开所在位置。Word 完整性检查通过后自动将原音视频移入废纸篓并清理临时音轨。</small></p>
 <div id="jobs"></div>
 <script>
 const historicalTaskTimes={};
-const stages={queued:'排队中',downloading:'正在下载',downloaded:'下载完成',diarizing:'本地模型正在区分发言人',transcribing:'本地模型正在识别语音',completed:'Word 已生成，可以查看',failed:'处理失败，进度已保留'};
+const stages={queued:'排队中',downloading:'正在下载',downloaded:'下载完成',diarizing:'本地模型正在区分发言人',transcribing:'本地模型正在识别语音',cloud_transcribing:'千问正在后台识别语音',cloud_exporting:'正在导出千问原文 Word',completed:'Word 已生成，可以查看',failed:'处理失败，进度已保留'};
 const msg=document.querySelector('#message');
 async function post(url,data){let r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});let j=await r.json();if(!r.ok)throw Error(j.error);return j}
-document.querySelector('#form').onsubmit=async e=>{e.preventDefault();try{await post('/jobs',{url:document.querySelector('#url').value});msg.textContent='已加入后台队列。你可以继续做其他事情，稍后回来查看文稿。';await refresh()}catch(e){msg.textContent=e.message}};
+document.querySelector('#form').onsubmit=async e=>{e.preventDefault();try{if(document.querySelector('#engine').value==='qianwen'){let health=await(await fetch('/health')).json();if(!health.engines?.includes('qianwen'))throw Error('网页服务需要加载新版。请完成千问登录配置后再试。')}await post('/jobs',{url:document.querySelector('#url').value,engine:document.querySelector('#engine').value});msg.textContent='已加入后台队列。你可以继续做其他事情，稍后回来查看文稿。';await refresh()}catch(e){msg.textContent=e.message}};
 function taskHeading(j){let title=j.title;if(j.state==='queued')return '待处理 · '+(title||'正在获取标题（'+new URL(j.url).hostname+' / '+(new URL(j.url).searchParams.get('v')||new URL(j.url).pathname.split('/').filter(Boolean).pop()||j.id)+'）');return title||'正在获取标题 · '+j.id}
 function link(text,url,style){let a=document.createElement('a');a.textContent=text;a.href=url;if(style)a.className=style;return a}
 async function refresh(){try{let jobs=await(await fetch('/jobs')).json();jobs.sort((a,b)=>(b.created_at??historicalTaskTimes[b.id]??b.added_at??Infinity)-(a.created_at??historicalTaskTimes[a.id]??a.added_at??Infinity));let host=document.querySelector('#jobs');host.replaceChildren();for(let j of jobs){let card=document.createElement('article');let h=document.createElement('h2');h.textContent=taskHeading(j);card.append(h);let p=document.createElement('p');p.textContent=(j.document&&!j.has_document)?'Word 文件已不在原保存位置，重新提交链接可生成':(stages[j.state]||'准备生成文稿');if(j.state==='transcribing'&&j.transcribed_seconds)p.textContent+=' · '+Math.floor(j.transcribed_seconds/60)+' / '+Math.ceil(j.audio_duration/60)+' 分钟';card.append(p);card.append(link('原网页',j.url));if(j.error){let err=document.createElement('p');err.textContent=j.error;card.append(err)}if(j.cleanup_error){let note=document.createElement('p');note.textContent='Word 已生成，但部分临时文件未清理：'+j.cleanup_error;card.append(note)}if(j.has_document){let actions=document.createElement('p');actions.className='actions';actions.append(link('查看 Word 文稿','/preview/'+j.id,'action'));let reveal=document.createElement('button');reveal.type='button';reveal.className='secondary';reveal.textContent='打开文档所在位置';let revealStatus=document.createElement('small');revealStatus.setAttribute('role','status');reveal.onclick=async()=>{reveal.disabled=true;revealStatus.textContent='正在打开文件夹…';try{await post('/reveal/'+j.id,{});revealStatus.textContent='已打开 Finder 文件夹。';msg.textContent='已打开文档所在的 Finder 文件夹。'}catch(e){revealStatus.textContent='打开失败：'+e.message;msg.textContent='打开失败：'+e.message}finally{reveal.disabled=false}};actions.append(reveal);actions.append(revealStatus);let download=link('下载 Word','/document/'+j.id,'action secondary');download.download=j.name+'.docx';actions.append(download);card.append(actions);let note=document.createElement('small');note.textContent=j.temporary_files_removed?(j.media_trashed?'原音视频已移入废纸篓，临时音轨已清理。':'原音视频与临时音轨已清理。'):'Word 内容未经人工校对。';card.append(note)}host.append(card)}}catch(e){msg.textContent='后台连接中断，请重新启动工具。'}}
@@ -658,7 +669,6 @@ import sys
 import unicodedata
 import wave
 import time
-import shutil
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -869,9 +879,10 @@ def prepare(args):
                        'outtmpl': str(media_folder / '%(title).60s.%(ext)s'),
                        'merge_output_format': 'mkv', 'retries': 5,
                        'socket_timeout': 30, 'overwrites': False}
-            node = shutil.which('node')
-            if node:
-                options['js_runtimes'] = {'node': {'path': node}}
+            import shutil
+            node = Path(shutil.which('node') or '/nonexistent')
+            if node.exists():
+                options['js_runtimes'] = {'node': {'path': str(node)}}
             if args.cookies_browser:
                 options['cookiesfrombrowser'] = (args.cookies_browser,)
             if not meta.get('media') or not Path(meta['media']).exists():
@@ -914,8 +925,13 @@ def prepare(args):
             os.environ.setdefault('SSL_CERT_FILE', '/etc/ssl/cert.pem')
             raw_path = job / 'raw-transcript.json'
             raw = json.loads(raw_path.read_text()) if raw_path.exists() else {}
-            if raw.get('model') != args.model:
-                raw = transcribe_qwen(wav, job, meta, args.model)
+            wanted_model = 'qianwen-web' if getattr(args, 'engine', 'local') == 'qianwen' else args.model
+            if raw.get('model') != wanted_model:
+                if wanted_model == 'qianwen-web':
+                    from qianwen_browser import export_audio
+                    raw = export_audio(wav, job, meta, save_json)
+                else:
+                    raw = transcribe_qwen(wav, job, meta, args.model)
                 save_json(raw_path, raw)
             build_document(job, raw)
             print(f'Word 已生成：{job}', flush=True)
@@ -1077,6 +1093,7 @@ def main():
     sub = parser.add_subparsers(dest='command', required=True)
     prep = sub.add_parser('prepare')
     prep.add_argument('url')
+    prep.add_argument('--engine', choices=['local', 'qianwen'], default='local')
     prep.add_argument('--cookies-browser', choices=['chrome', 'safari', 'firefox', 'edge'])
     prep.add_argument('--model', choices=['Qwen/Qwen3-ASR-1.7B'], default='Qwen/Qwen3-ASR-1.7B')
     export = sub.add_parser('export', help='从已有识别结果生成 Word')
@@ -1363,20 +1380,23 @@ print '确认页面能打开后，这个终端窗口可以关闭。'
 ### FILE: 文件校验.json
 ```json
 {
-  "app.py": "1460585eb00541738a8c8b32a1b60f908e77091b4bfa19734b7c42e665ef340a",
+  "app.py": "ed518a900637030efbd2512ab549d760c25ff6ec9a94f1449ccb43582e2618e6",
   "check_recovery.py": "7fb929eabc113b13551764fe57caa4f72e7f37f6cded04a75c590fe54e1a3d2d",
-  "index.html": "778754984ab08de8e9a3e258265d23793114a2f5fe4f188c10b1b627731d57fa",
+  "index.html": "f4aacf140caeac36a16fa1692a473af9a1c98a547650f323b7b6b1eae8bc601a",
   "install.py": "d423b71bfd29145b2b6616da4b6474ad86beec07813eb8c9c36330ed298f19bb",
   "launch_service.py": "2cadb70ee153b678af24a6eb9e911d7e6e2ae4906ca8d3115ff8bb723d516dba",
   "prefetch_model.py": "1c7512114bdb7d49b6a2d8a4199452f5291ad4c04fc4effa4e329b4dab227df3",
-  "reader.py": "6847c329c06126638b7de798df74b2c7f5c0a15de0e59185f50d902efeada13f",
+  "qianwen_browser.py": "daa1fea0b087bd1c48a2e4465ba2c1a5905489781f3de3ee6ca792782250d12e",
+  "reader.py": "249c75d6bddae4a34db213168606a669dac8308707a7bf7dc20df992fad73ed8",
   "requirements.txt": "aa237150a51d1f468ccab935e7ccd3235beddaf60afb9719676dc7f8fbf63e7c",
   "test_app.py": "911650ca1bd12c3e87ce499ed1d6bfea8882d8d04ac9e357bb98c067853befc9",
+  "test_qianwen.py": "d95d8b70b0948906667d2de5389c00fbef90476554551beee1308e988d5dacc9",
   "test_reader.py": "ea7af8f55bfe4c47023ee9f712b6b078cfc9dd0beedec2325134556970fdc059",
   "停用自动启动.command": "0c2353cd41fd56b737864d09d6fe83f8b7d62cc1c51757e86fe0bc6bbd76b682",
   "启动工具.command": "f67940511e7be84f96ef4eadc60dee14b08668d185f06f94cd03a02ebd3d59ca",
   "启用自动启动.command": "3475ec88b5c035f49adc0a13b3a14a09255ca19aa600a750051f6a8f1d8a07b6",
   "自动恢复测试.command": "e5f7e855d99cd648d6ae2e1382da651e8afb7597f184e08d1661d6daef5cc7f6",
+  "配置千问登录.command": "3bc9b14516ab4c169b0cd7a9c595778965167f7f7ce533eab5ad7b3abd835fac",
   "首次安装.command": "3386934c6c62f0983f9d9ee8541bf0d73a4fa671be319201efa649bf71c28d32"
 }
 
@@ -1635,5 +1655,177 @@ cd "${0:A:h}" || exit 1
 result=$?
 read 'reply?按回车关闭窗口。'
 exit $result
+
+```
+
+### FILE: qianwen_browser.py
+```python
+"""Qianwen web adapter. Uses an isolated local browser profile, never private APIs."""
+import os
+import argparse
+import re
+import subprocess
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+os.environ.setdefault('PLAYWRIGHT_BROWSERS_PATH', str(ROOT/'work/browser-bin'))
+PROFILE = ROOT / 'work/qianwen-browser-profile'
+URL = 'https://www.qianwen.com/discover/audioread'
+MODEL = 'qianwen-web'
+
+
+def read_export(path, duration):
+    from docx import Document
+    doc = Document(path)
+    segments = []
+    current = None
+    for paragraph in doc.paragraphs:
+        text = paragraph.text.strip()
+        match = re.fullmatch(r'(发言人.*?)\s+((?:\d+:)?\d{2}:\d{2})', text)
+        if match:
+            parts = list(map(int, match[2].split(':')))
+            seconds = sum(n * 60 ** i for i, n in enumerate(reversed(parts)))
+            if seconds > duration + 5 or (segments and seconds < segments[-1]['start']):
+                raise ValueError('千问时间戳与音频时长不符，保留原媒体')
+            if current is not None:
+                current['end'] = seconds
+            current = {'start': seconds, 'end': duration, 'speaker': match[1], 'text': ''}
+            segments.append(current)
+        elif current is not None and text:
+            current['text'] += ('\n' if current['text'] else '') + text
+    if doc.tables:
+        raise ValueError('千问导出出现未支持的表格结构，保留媒体，需更新导入器')
+    if not segments or any(not s['text'] for s in segments):
+        raise ValueError('千问导出缺少完整原文、发言人或时间戳，保留媒体')
+    return {'model': MODEL, 'language': '中英文自由说', 'segments': segments,
+            'speaker_method': '发言人由千问网页识别；结束时间取下一段起点，末段取音频总长。'}
+
+
+def browser_context(playwright, headed=False):
+    PROFILE.mkdir(parents=True, exist_ok=True)
+    return playwright.chromium.launch_persistent_context(str(PROFILE), headless=not headed,
+                                                         accept_downloads=True)
+
+
+def export_audio(audio, job, meta, save):
+    from playwright.sync_api import sync_playwright
+    from reader import ffmpeg, filename
+    upload = job/'media'/(filename(meta['title'])+'-'+job.name+'.mp3')
+    if not upload.exists():
+        subprocess.run([ffmpeg(), '-nostdin', '-v', 'error', '-y', '-i', str(audio),
+                        '-c:a', 'libmp3lame', '-b:a', '64k', str(upload)], check=True)
+    if meta['audio_duration'] > 6*3600 or upload.stat().st_size > 500*1024*1024:
+        raise ValueError('超过千问网页单文件6小时或音频500MB限制，保留媒体')
+    with sync_playwright() as p:
+        with browser_context(p) as context:
+            page = context.pages[0] if context.pages else context.new_page()
+            page.goto(meta.get('qianwen_url') or URL)
+            if not meta.get('qianwen_url'):
+                try:
+                    page.get_by_text('中英文自由说', exact=True).wait_for(timeout=30000)
+                except Exception as error:
+                    raise RuntimeError('千问需要登录或页面无法访问。请运行“配置千问登录.command”。') from error
+                page.get_by_text('中英文自由说', exact=True).click()
+                page.get_by_text('多人讨论', exact=True).click()
+                if not page.get_by_text('不翻译', exact=True).is_visible():
+                    raise RuntimeError('未确认不翻译设置，停止上传')
+                if not meta.get('qianwen_submitted'):
+                    with page.expect_file_chooser() as chooser:
+                        page.get_by_role('button', name=re.compile('点击或将')).click()
+                    chooser.value.set_files(str(upload))
+                    page.get_by_role('button', name='确 认', exact=True).click()
+                    meta['qianwen_submitted'] = True; save(job/'job.json', meta)
+                meta['state'] = 'cloud_transcribing'; save(job/'job.json', meta)
+                title = upload.stem
+                deadline = time.monotonic() + 6 * 3600
+                while time.monotonic() < deadline:
+                    page.get_by_text(title, exact=True).first.click(timeout=10000)
+                    if page.get_by_role('button', name='导出', exact=True).count():
+                        meta['qianwen_url'] = page.url; save(job/'job.json', meta); break
+                    time.sleep(5)
+                else:
+                    raise RuntimeError('千问处理超过等待上限，保留媒体以便检查')
+            page.get_by_role('button', name='导出', exact=True).click()
+            panel = page.get_by_role('tooltip')
+            checks = panel.get_by_role('checkbox')
+            if checks.count() != 5:
+                raise RuntimeError('千问导出界面已变化，停止导出并保留媒体')
+            checks.nth(0).check()
+            for i in range(1, 5): checks.nth(i).uncheck()
+            if not panel.get_by_text('.docx', exact=True).first.is_visible():
+                raise RuntimeError('导出格式不是 Word')
+            for text in ('发言人', '时间戳'):
+                if not panel.get_by_text(text, exact=True).is_visible():
+                    raise RuntimeError('千问导出未包含'+text+'，请在千问导出设置中勾选')
+            meta['state'] = 'cloud_exporting'; save(job/'job.json', meta)
+            destination = job/'qianwen-original.docx'
+            with page.expect_download(timeout=120000) as download:
+                panel.get_by_role('button', name='导出', exact=True).click()
+            download.value.save_as(str(destination))
+    raw = read_export(destination, meta['audio_duration'])
+    upload.unlink(missing_ok=True)
+    return raw
+
+
+def login():
+    from playwright.sync_api import sync_playwright
+    with sync_playwright() as p:
+        with browser_context(p, headed=True) as context:
+            page = context.pages[0] if context.pages else context.new_page()
+            page.goto(URL)
+            input('请在专用浏览器中登录千问，确认音视频速读页面可用后，在此按回车保存登录。')
+    print('登录环境已保存在本机。后台任务不会打开此浏览器窗口。')
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(); parser.add_argument('command', choices=['login'])
+    parser.parse_args(); login()
+
+```
+
+### FILE: test_qianwen.py
+```python
+import tempfile
+import unittest
+from pathlib import Path
+from docx import Document
+from qianwen_browser import read_export
+
+class QianwenExportTests(unittest.TestCase):
+    def export(self, lines):
+        temp=tempfile.TemporaryDirectory();self.addCleanup(temp.cleanup)
+        path=Path(temp.name)/'export.docx';doc=Document()
+        for line in lines:doc.add_paragraph(line)
+        doc.save(path);return path
+    def test_preserves_all_paragraphs_and_speakers(self):
+        p=self.export(['标题','2026年10月07日','发言人1   00:00','第一段。','继续讲话。','发言人2   00:12','第二段。'])
+        result=read_export(p,20)
+        self.assertEqual(result['segments'],[{'start':0,'end':12,'speaker':'发言人1','text':'第一段。\n继续讲话。'},{'start':12,'end':20,'speaker':'发言人2','text':'第二段。'}])
+    def test_rejects_missing_timestamps(self):
+        with self.assertRaises(ValueError):read_export(self.export(['只有正文']),20)
+    def test_rejects_wrong_duration(self):
+        with self.assertRaises(ValueError):read_export(self.export(['发言人1   01:00','正文']),20)
+    def test_rejects_empty_segment(self):
+        with self.assertRaises(ValueError):read_export(self.export(['发言人1   00:00']),20)
+
+if __name__=='__main__':unittest.main()
+
+```
+
+### FILE: 配置千问登录.command
+```zsh
+#!/bin/zsh
+cd -- "${0:A:h}" || exit 1
+export SSL_CERT_FILE=/etc/ssl/cert.pem
+export PIP_CERT=/etc/ssl/cert.pem
+export NODE_EXTRA_CA_CERTS=/etc/ssl/cert.pem
+export PLAYWRIGHT_BROWSERS_PATH="$PWD/work/browser-bin"
+.venv/bin/python -m pip install playwright || exit 1
+.venv/bin/python -m playwright install chromium || exit 1
+.venv/bin/python qianwen_browser.py login || exit 1
+/bin/launchctl kill SIGTERM "gui/$(id -u)/com.zhangjp.web-video-to-word" 2>/dev/null || true
+echo "登录配置完成。如已启用自动启动，服务将自动加载新版。"
+read '?按回车关闭窗口。'
 
 ```
