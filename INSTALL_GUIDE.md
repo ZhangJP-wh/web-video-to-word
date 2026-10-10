@@ -204,6 +204,8 @@ YouTube 登录或人机验证由所有任务共用一个专用 Chrome 窗口及�
 
 新任务按完全相同的网页链接，或完全相同的上传文件名（含扩展名，区分大小写）检查重复；发现重复不建立新任务，红色加粗弹窗提示“当前任务有重复”及已有任务序号。已删除记录不参与检查；明确点击“重新开始任务”不受重复检查阻止。
 
+重复检查还按平台视频 ID 匹配：YouTube 的 watch、youtu.be、shorts、embed、live 链接指向同一视频时，不受分享参数和播放起点影响，均视为重复。B 站标准视频链接忽略分享参数，但保留分 P，不同分 P 不视为重复。未知链接形式仍按完整链接比较，不仅凭标题判断。检查适用于已有本机任务记录，无需重新录入；原有完全相同文件名规则保持。
+
 ## 仅收到本文档：完整源码
 
 AI Agent 可按 FILE 标记逐个提取文件，再核对文件校验.json；运行 `bash install.sh`。仅提取这里列出的公开源码，不迁移他人的登录资料。
@@ -258,7 +260,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse, unquote
+from urllib.parse import urlparse, unquote, parse_qs
 
 from runtime_compat import venv_python
 from reader import ROOT, WORK, OUTPUT, LEGACY_OUTPUT, NOTICE, save_json, download_url
@@ -605,16 +607,42 @@ class DuplicateTask(ValueError):
         self.task_numbers=task_numbers
         super().__init__('当前任务有重复；与序号 '+ '、'.join(map(str,task_numbers))+' 的任务记录重复。')
 
+def video_identity(url):
+    """Canonical identities for supported URL forms; unknown URLs stay exact."""
+    try:
+        parsed=urlparse(url)
+        if parsed.scheme not in ('http','https'):return None
+        host=(parsed.hostname or '').lower()
+        query=parse_qs(parsed.query)
+        parts=parsed.path.strip('/').split('/')
+        video=None
+        if host in ('youtu.be','www.youtu.be') and len(parts)==1:
+            video=parts[0]
+        elif host in ('youtube.com','www.youtube.com','m.youtube.com','music.youtube.com','youtube-nocookie.com','www.youtube-nocookie.com'):
+            if parsed.path.rstrip('/')=='/watch' and len(query.get('v',[]))==1:video=query['v'][0]
+            elif len(parts)==2 and parts[0] in ('shorts','embed','live'):video=parts[1]
+        if video and re.fullmatch(r'[A-Za-z0-9_-]{11}',video):return ('youtube',video)
+        if host in ('bilibili.com','www.bilibili.com','m.bilibili.com'):
+            match=re.fullmatch(r'/video/(BV[A-Za-z0-9]{10}|av[0-9]+)/?',parsed.path)
+            if match:
+                pages=query.get('p',['1'])
+                if len(pages)!=1 or not pages[0].isdigit() or int(pages[0])<1:return None
+                return ('bilibili',match[1],int(pages[0]))
+    except (TypeError,ValueError):
+        pass
+    return None
+
 def reject_duplicate(url=None, original_name=None):
     from task_numbering import numbers
     matches=[]
+    identity=video_identity(url) if url is not None else None
     for record in (WORK/'jobs').glob('*/job.json'):
         item=json.loads(record.read_text())
         stored=item.get('original_filename')
         if not stored and item.get('source_kind')=='local':
             label=item.get('source_label','')
             if label.startswith('本地上传文件：'):stored=label[len('本地上传文件：'):]
-        if (url is not None and item.get('url')==url) or (original_name is not None and stored==original_name):
+        if (url is not None and (item.get('url')==url or (identity is not None and video_identity(item.get('url'))==identity))) or (original_name is not None and stored==original_name):
             matches.append(record.parent.name)
     if matches:
         ledger=numbers(WORK)
@@ -3104,6 +3132,28 @@ class DuplicateTaskTests(unittest.TestCase):
     def test_restart_bypasses_duplicate_guard(self):
         with patch('app.reject_duplicate') as guard,patch('app.enqueue',return_value='task'):
             self.assertEqual(app.submit_url('https://example.com',True),'task');guard.assert_not_called()
+
+class VideoIdentityTests(unittest.TestCase):
+    def test_youtube_share_variants_match(self):
+        expected=('youtube','abcdefghijk')
+        for url in ['https://youtu.be/abcdefghijk?si=share','https://www.youtube.com/watch?v=abcdefghijk&t=20','https://m.youtube.com/watch?feature=share&v=abcdefghijk','https://youtube.com/shorts/abcdefghijk','https://youtube.com/embed/abcdefghijk','https://youtube.com/live/abcdefghijk']:
+            self.assertEqual(app.video_identity(url),expected)
+        self.assertNotEqual(app.video_identity('https://youtu.be/abcdefghijK'),expected)
+        self.assertIsNone(app.video_identity('https://youtube.com.attacker.test/watch?v=abcdefghijk'))
+
+    def test_bilibili_parts_are_distinct(self):
+        base='https://www.bilibili.com/video/BV1234567890'
+        self.assertEqual(app.video_identity(base),app.video_identity(base+'?p=1&share_source=copy'))
+        self.assertNotEqual(app.video_identity(base),app.video_identity(base+'?p=2'))
+        self.assertIsNone(app.video_identity(base+'?p=bad'))
+
+    def test_duplicate_guard_checks_saved_alternate_url(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);job=root/'jobs/123456abcdef';job.mkdir(parents=True)
+            (job/'job.json').write_text(json.dumps({'url':'https://youtube.com/watch?v=abcdefghijk','created_at':1}))
+            with patch.object(app,'WORK',root):
+                with self.assertRaises(app.DuplicateTask):app.reject_duplicate(url='https://youtu.be/abcdefghijk?si=share')
+                app.reject_duplicate(url='https://youtu.be/abcdefghijK')
 ```
 
 ### FILE: test_bilibili_download.py
@@ -4350,7 +4400,7 @@ exit $result
 ```text
 {
   ".gitignore": "441ba499047830ff2c33283c180262761565e59eb322ed49d0faa5ef50c3b1c7",
-  "app.py": "d42ba015a609dba26769a9f69f3e6eae0c4560546e45c5e0ae0b52f7a63f0222",
+  "app.py": "6c611bdaa1dc29d32645ed9596febd4a0c72405f1f60e39fa454c67f7f5e8bdc",
   "bilibili_download.py": "286ed2197bb0763f3f060aea40075d0cb4a46c1252ef19a0343358e00dd40f5d",
   "browser_service.py": "4bb4e16ac5b1f0ba53a46e3df01a55b5072f4d1dcbd3c48e745aaf55d8e5136a",
   "check_recovery.py": "7fb929eabc113b13551764fe57caa4f72e7f37f6cded04a75c590fe54e1a3d2d",
@@ -4372,7 +4422,7 @@ exit $result
   "start-windows.cmd": "c7337ce90691fcda24e0bf19b584ff342288322681552433921f92ef399ed9b8",
   "task_controls.py": "e452af89723c6a0506012cb48a931bb7286132925ed33d56db0069ef6e29fba4",
   "task_numbering.py": "fb2249ca9dc6d7c8fb7ac28cf9e23e15d6796f544e8dc2faed6d67ca8dcbb34e",
-  "test_app.py": "a822ba519cf7dc919ec114c130df5ac7108a36184d8a8a402a3dd8934ecbe23b",
+  "test_app.py": "9a42e7354e113fc172337ce5f9402431bc85d8694130b3cd47176d75fcd0a701",
   "test_bilibili_download.py": "7d880288610b8e78afb0927f074275b737b143b5b81750c4caf51d99ebe7dae1",
   "test_browser_service.py": "fa30cf65671ef804c0fee82b0cecced1a3748bbc9f2209cde584ceb8aa49a2c3",
   "test_deletion_queue.py": "172f0a40974d00804f6d7e0d0fbcdf72acc7178c1d301c7cfec678d88985db71",

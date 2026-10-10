@@ -241,3 +241,25 @@ class DuplicateTaskTests(unittest.TestCase):
     def test_restart_bypasses_duplicate_guard(self):
         with patch('app.reject_duplicate') as guard,patch('app.enqueue',return_value='task'):
             self.assertEqual(app.submit_url('https://example.com',True),'task');guard.assert_not_called()
+
+class VideoIdentityTests(unittest.TestCase):
+    def test_youtube_share_variants_match(self):
+        expected=('youtube','abcdefghijk')
+        for url in ['https://youtu.be/abcdefghijk?si=share','https://www.youtube.com/watch?v=abcdefghijk&t=20','https://m.youtube.com/watch?feature=share&v=abcdefghijk','https://youtube.com/shorts/abcdefghijk','https://youtube.com/embed/abcdefghijk','https://youtube.com/live/abcdefghijk']:
+            self.assertEqual(app.video_identity(url),expected)
+        self.assertNotEqual(app.video_identity('https://youtu.be/abcdefghijK'),expected)
+        self.assertIsNone(app.video_identity('https://youtube.com.attacker.test/watch?v=abcdefghijk'))
+
+    def test_bilibili_parts_are_distinct(self):
+        base='https://www.bilibili.com/video/BV1234567890'
+        self.assertEqual(app.video_identity(base),app.video_identity(base+'?p=1&share_source=copy'))
+        self.assertNotEqual(app.video_identity(base),app.video_identity(base+'?p=2'))
+        self.assertIsNone(app.video_identity(base+'?p=bad'))
+
+    def test_duplicate_guard_checks_saved_alternate_url(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);job=root/'jobs/123456abcdef';job.mkdir(parents=True)
+            (job/'job.json').write_text(json.dumps({'url':'https://youtube.com/watch?v=abcdefghijk','created_at':1}))
+            with patch.object(app,'WORK',root):
+                with self.assertRaises(app.DuplicateTask):app.reject_duplicate(url='https://youtu.be/abcdefghijk?si=share')
+                app.reject_duplicate(url='https://youtu.be/abcdefghijK')

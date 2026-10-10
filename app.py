@@ -10,7 +10,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse, unquote
+from urllib.parse import urlparse, unquote, parse_qs
 
 from runtime_compat import venv_python
 from reader import ROOT, WORK, OUTPUT, LEGACY_OUTPUT, NOTICE, save_json, download_url
@@ -357,16 +357,42 @@ class DuplicateTask(ValueError):
         self.task_numbers=task_numbers
         super().__init__('当前任务有重复；与序号 '+ '、'.join(map(str,task_numbers))+' 的任务记录重复。')
 
+def video_identity(url):
+    """Canonical identities for supported URL forms; unknown URLs stay exact."""
+    try:
+        parsed=urlparse(url)
+        if parsed.scheme not in ('http','https'):return None
+        host=(parsed.hostname or '').lower()
+        query=parse_qs(parsed.query)
+        parts=parsed.path.strip('/').split('/')
+        video=None
+        if host in ('youtu.be','www.youtu.be') and len(parts)==1:
+            video=parts[0]
+        elif host in ('youtube.com','www.youtube.com','m.youtube.com','music.youtube.com','youtube-nocookie.com','www.youtube-nocookie.com'):
+            if parsed.path.rstrip('/')=='/watch' and len(query.get('v',[]))==1:video=query['v'][0]
+            elif len(parts)==2 and parts[0] in ('shorts','embed','live'):video=parts[1]
+        if video and re.fullmatch(r'[A-Za-z0-9_-]{11}',video):return ('youtube',video)
+        if host in ('bilibili.com','www.bilibili.com','m.bilibili.com'):
+            match=re.fullmatch(r'/video/(BV[A-Za-z0-9]{10}|av[0-9]+)/?',parsed.path)
+            if match:
+                pages=query.get('p',['1'])
+                if len(pages)!=1 or not pages[0].isdigit() or int(pages[0])<1:return None
+                return ('bilibili',match[1],int(pages[0]))
+    except (TypeError,ValueError):
+        pass
+    return None
+
 def reject_duplicate(url=None, original_name=None):
     from task_numbering import numbers
     matches=[]
+    identity=video_identity(url) if url is not None else None
     for record in (WORK/'jobs').glob('*/job.json'):
         item=json.loads(record.read_text())
         stored=item.get('original_filename')
         if not stored and item.get('source_kind')=='local':
             label=item.get('source_label','')
             if label.startswith('本地上传文件：'):stored=label[len('本地上传文件：'):]
-        if (url is not None and item.get('url')==url) or (original_name is not None and stored==original_name):
+        if (url is not None and (item.get('url')==url or (identity is not None and video_identity(item.get('url'))==identity))) or (original_name is not None and stored==original_name):
             matches.append(record.parent.name)
     if matches:
         ledger=numbers(WORK)
