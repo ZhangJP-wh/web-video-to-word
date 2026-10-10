@@ -378,6 +378,14 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, (ROOT / 'icons' / 'app-icon.svg').read_bytes(), 'image/svg+xml; charset=utf-8')
         if self.path == '/health':
             return self.reply(200, {'ok': True, 'project': str(ROOT), 'pid': os.getpid(), 'engines': ['qianwen'], 'task_controls': True, 'local_upload': True, 'cloud_delete': True})
+        if self.path == '/runtime/status':
+            from runtime_status import snapshot
+            return self.reply(200,snapshot(ROOT,list_jobs(),login_status()))
+        match=re.fullmatch(r'/runtime/page/([0-9]+)',self.path)
+        if match:
+            path=WORK/'browser-live'/(match.group(1)+'.png')
+            if path.exists():return self.reply(200,path.read_bytes(),'image/png')
+            return self.reply(404,{'error':'当前没有可显示的页面截图'})
         if self.path == '/qianwen/status':
             return self.reply(200, login_status())
         if self.path == '/jobs':
