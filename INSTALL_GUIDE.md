@@ -1388,7 +1388,7 @@ print '确认页面能打开后，这个终端窗口可以关闭。'
   "install.py": "d423b71bfd29145b2b6616da4b6474ad86beec07813eb8c9c36330ed298f19bb",
   "launch_service.py": "2cadb70ee153b678af24a6eb9e911d7e6e2ae4906ca8d3115ff8bb723d516dba",
   "prefetch_model.py": "1c7512114bdb7d49b6a2d8a4199452f5291ad4c04fc4effa4e329b4dab227df3",
-  "qianwen_browser.py": "daa1fea0b087bd1c48a2e4465ba2c1a5905489781f3de3ee6ca792782250d12e",
+  "qianwen_browser.py": "b28c68ccbd6ca8893e921394d515b6ee2bb693410408e96d8213089df98efccd",
   "reader.py": "249c75d6bddae4a34db213168606a669dac8308707a7bf7dc20df992fad73ed8",
   "requirements.txt": "aa237150a51d1f468ccab935e7ccd3235beddaf60afb9719676dc7f8fbf63e7c",
   "smoke_qianwen.py": "df0219bddc0456a3634a1e76c40a359060787ced5355e6a5d6d9f4495a37c81c",
@@ -1709,7 +1709,8 @@ def read_export(path, duration):
 def browser_context(playwright, headed=False):
     PROFILE.mkdir(parents=True, exist_ok=True)
     return playwright.chromium.launch_persistent_context(str(PROFILE), headless=not headed,
-                                                         accept_downloads=True)
+                                                         accept_downloads=True,
+                                                         viewport={'width': 1920, 'height': 1600})
 
 
 def export_audio(audio, job, meta, save):
@@ -1744,7 +1745,7 @@ def export_audio(audio, job, meta, save):
                 title = upload.stem
                 deadline = time.monotonic() + 6 * 3600
                 while time.monotonic() < deadline:
-                    page.get_by_text(title, exact=True).first.click(timeout=10000)
+                    page.locator('.rowTitle .titleContent').filter(has_text=title).first.click(timeout=10000)
                     if page.get_by_role('button', name='导出', exact=True).count():
                         meta['qianwen_url'] = page.url; save(job/'job.json', meta); break
                     time.sleep(5)

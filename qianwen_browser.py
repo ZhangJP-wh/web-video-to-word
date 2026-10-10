@@ -43,7 +43,8 @@ def read_export(path, duration):
 def browser_context(playwright, headed=False):
     PROFILE.mkdir(parents=True, exist_ok=True)
     return playwright.chromium.launch_persistent_context(str(PROFILE), headless=not headed,
-                                                         accept_downloads=True)
+                                                         accept_downloads=True,
+                                                         viewport={'width': 1920, 'height': 1600})
 
 
 def export_audio(audio, job, meta, save):
@@ -78,7 +79,7 @@ def export_audio(audio, job, meta, save):
                 title = upload.stem
                 deadline = time.monotonic() + 6 * 3600
                 while time.monotonic() < deadline:
-                    page.get_by_text(title, exact=True).first.click(timeout=10000)
+                    page.locator('.rowTitle .titleContent').filter(has_text=title).first.click(timeout=10000)
                     if page.get_by_role('button', name='导出', exact=True).count():
                         meta['qianwen_url'] = page.url; save(job/'job.json', meta); break
                     time.sleep(5)
