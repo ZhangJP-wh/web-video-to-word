@@ -158,6 +158,19 @@ class CloudDeleteSafetyTests(unittest.TestCase):
         self.assertTrue(meta['qianwen_cloud_deleted'])
         page.get_by_text.assert_any_call('最近记录',exact=False)
 
+    def test_missing_cloud_record_allows_local_cleanup_without_claiming_deleted(self):
+        from unittest.mock import patch
+        import qianwen_browser as browser
+        page=UploadConfirmationTests().page();meta={'title':'测试','qianwen_submitted':True}
+        page.locator.return_value.filter.return_value.count.return_value=0
+        with patch('playwright.sync_api.expect') as expect:
+            expect.return_value.to_have_count.side_effect=AssertionError('record absent')
+            browser.delete_cloud_record(page,Path('/tmp/123456abcdef'),meta,lambda *args:None)
+        self.assertEqual(meta['qianwen_delete_result'],'not_found')
+        self.assertTrue(meta['qianwen_delete_resolved'])
+        self.assertFalse(meta.get('qianwen_cloud_deleted',False))
+        page.locator.return_value.filter.return_value.locator.assert_not_called()
+
     def test_ambiguous_record_never_clicks_delete(self):
         from unittest.mock import MagicMock,patch
         import qianwen_browser as browser

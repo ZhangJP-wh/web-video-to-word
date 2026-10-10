@@ -143,6 +143,19 @@ class LocalUploadTests(unittest.TestCase):
             self.assertFalse((Path(tmp)/'jobs').exists())
 
 class SynchronizedDeleteTests(unittest.TestCase):
+    def test_missing_cloud_record_success_reports_all_three_elements(self):
+        report=app.deletion_report(True,'not_found')
+        self.assertEqual(report['status'],'success')
+        self.assertEqual(len(report['elements']),3)
+        self.assertIn('未找到对应千问记录',report['elements'][2]['detail'])
+        self.assertIn('删除成功',report['elements'][0]['detail'])
+
+    def test_partial_failure_keeps_cloud_success_in_report(self):
+        report=app.deletion_report(False,'deleted','文件被占用')
+        self.assertEqual(report['elements'][2]['detail'],'删除成功')
+        self.assertIn('未全部删除成功',report['elements'][1]['detail'])
+        self.assertIn('文件被占用',report['message'])
+
     def test_failed_deletion_result_survives_task_list_refresh(self):
         with tempfile.TemporaryDirectory() as tmp:
             work=Path(tmp);folder=work/'jobs/123456abcdef';folder.mkdir(parents=True)

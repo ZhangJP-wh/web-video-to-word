@@ -243,16 +243,23 @@ def delete_cloud_record(page, job, meta, save):
     """Delete only the exact tool-uploaded title containing this task's identifier."""
     from playwright.sync_api import expect
     from reader import filename
-    if meta.get('qianwen_cloud_deleted'):return
+    if meta.get('qianwen_cloud_deleted') or meta.get('qianwen_delete_resolved'):return
     if not any(meta.get(key) for key in ('qianwen_submitted','qianwen_submission_attempted','qianwen_url','qianwen_upload_confirmed')):
-        meta['qianwen_cloud_deleted']=True;save(job/'job.json',meta);return
+        meta.update(qianwen_delete_resolved=True,qianwen_delete_result='not_uploaded');save(job/'job.json',meta);return
     title=meta.get('qianwen_upload_title') or filename(meta['title'])+'-'+job.name
     if not title.endswith('-'+job.name):raise RuntimeError('无法确认千问记录归属，未执行删除')
     require_login_if_visible(page)
     page.get_by_text('最近记录',exact=False).first.wait_for(timeout=30000)
     rows=page.locator('[data-e2e-test-id="folders_item_div"]').filter(has=page.get_by_text(title,exact=True))
     try:expect(rows).to_have_count(1,timeout=15000)
-    except AssertionError as error:raise RuntimeError('未能唯一定位对应千问记录，未删除本机文件。记录可能已被手动删除或不在最近记录中，请检查千问页面。') from error
+    except AssertionError as error:
+        require_login_if_visible(page)
+        require_cloud_available(page)
+        if rows.count()==0:
+            meta.update(qianwen_delete_resolved=True,qianwen_delete_result='not_found')
+            save(job/'job.json',meta)
+            return
+        raise RuntimeError('存在多个匹配的千问记录，无法唯一定位，未执行云端删除') from error
     rows.locator('[data-name="action"] .ant-dropdown-trigger').click()
     page.get_by_role('menuitem',name='删除',exact=True).click()
     dialog=page.get_by_role('dialog').filter(has_text='确定删除本记录吗？')
@@ -260,7 +267,7 @@ def delete_cloud_record(page, job, meta, save):
     dialog.get_by_role('button',name='确定删除',exact=True).click()
     expect(rows).to_have_count(0,timeout=30000)
     require_cloud_available(page)
-    meta['qianwen_cloud_deleted']=True;save(job/'job.json',meta)
+    meta.update(qianwen_cloud_deleted=True,qianwen_delete_resolved=True,qianwen_delete_result='deleted');save(job/'job.json',meta)
 
 
 def delete_cloud(job):
@@ -268,9 +275,9 @@ def delete_cloud(job):
     from reader import save_json
     from playwright.sync_api import sync_playwright
     meta=json.loads((job/'job.json').read_text())
-    if meta.get('qianwen_cloud_deleted'):return
+    if meta.get('qianwen_cloud_deleted') or meta.get('qianwen_delete_resolved'):return
     if not any(meta.get(key) for key in ('qianwen_submitted','qianwen_submission_attempted','qianwen_url','qianwen_upload_confirmed')):
-        meta['qianwen_cloud_deleted']=True;save_json(job/'job.json',meta);return
+        meta.update(qianwen_delete_resolved=True,qianwen_delete_result='not_uploaded');save_json(job/'job.json',meta);return
     with sync_playwright() as p:
         with browser_context(p) as context:
             page=context.pages[0] if context.pages else context.new_page()

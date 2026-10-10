@@ -171,6 +171,19 @@ def worker():
             tasks.task_done()
 
 
+def deletion_report(success, cloud_status, error=''):
+    cloud={'deleted':'删除成功','not_uploaded':'无需删除：此任务未上传到千问',
+           'not_found':'未找到对应千问记录，未执行云端删除；本机清理按成功处理'}
+    local='删除成功' if success else '未删除成功，任务已保留'
+    files='删除成功（已移入废纸篓）' if success else ('未全部删除成功，请检查并重试' if cloud_status in cloud else '未执行删除，文件已保留')
+    elements=[{'label':'工具任务列表记录','detail':local},
+              {'label':'本机文稿及任务文件','detail':files},
+              {'label':'对应的千问记录','detail':cloud.get(cloud_status,'删除失败：'+error)}]
+    message=('删除成功' if success else '删除失败')+'\n'+'\n'.join(e['label']+'：'+e['detail'] for e in elements)
+    if not success and cloud_status in cloud:message+='\n失败原因：'+error
+    return {'status':'success' if success else 'failed','message':message,'elements':elements,'at':time.time()}
+
+
 def delete_task(ident):
     from task_controls import trash_task, stop_reader
     with mutex:
@@ -201,9 +214,12 @@ def delete_task(ident):
                 meta.update(state='failed',error='任务已停止，千问同步删除未完成：'+str(error))
                 save_json(folder/'job.json',meta)
             raise
+        cloud_meta=json.loads((folder/'job.json').read_text())
+        cloud_status=cloud_meta.get('qianwen_delete_result','deleted' if cloud_meta.get('qianwen_cloud_deleted') else 'failed')
         result=trash_task(ROOT,WORK,[OUTPUT,LEGACY_OUTPUT,ROOT/'outputs',OUTPUT.parent/'网页视频转语音文稿'],ident)
         pending.discard(ident);generations.pop(ident,None)
-        result['message']='任务与本机相关文件已移入废纸篓，对应千问记录已删除（未上传的任务无需云端删除）。'
+        result['deletion_result']=deletion_report(True,cloud_status)
+        result['message']=result['deletion_result']['message']
         return result
 
 
@@ -368,9 +384,11 @@ class Handler(BaseHTTPRequestHandler):
                     result=delete_task(ident)
                 except (ValueError,OSError,subprocess.SubprocessError) as error:
                     folder=WORK/'jobs'/ident
-                    if folder.exists():save_json(folder/'delete-result.json',{'status':'failed','message':'删除失败：'+str(error),'at':time.time()})
-                    raise
-                result['message']='删除成功：任务列表记录、本机文稿及任务文件已清理，对应千问记录已删除（未上传的任务无需云端删除）。'
+                    meta=json.loads((folder/'job.json').read_text()) if (folder/'job.json').exists() else {}
+                    cloud_status=meta.get('qianwen_delete_result','deleted' if meta.get('qianwen_cloud_deleted') else 'failed')
+                    report=deletion_report(False,cloud_status,str(error))
+                    if folder.exists():save_json(folder/'delete-result.json',report)
+                    return self.reply(400,{'error':str(error),'deletion_result':report})
                 return self.reply(200,result)
             match = re.fullmatch(r'/reveal/([0-9a-f]{12})', self.path)
             if match:
