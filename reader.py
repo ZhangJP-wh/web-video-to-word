@@ -137,7 +137,11 @@ def prepare(args):
             node = Path.home() / '.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node'
             if node.exists():
                 options['js_runtimes'] = {'node': {'path': str(node)}}
-            if args.cookies_browser:
+            from youtube_verification import saved_profile
+            youtube_profile = saved_profile(job) if 'youtube.com' in args.url or 'youtu.be' in args.url else None
+            if youtube_profile:
+                options['cookiesfrombrowser'] = ('chrome', str(youtube_profile.resolve()))
+            if args.cookies_browser and not youtube_profile:
                 options['cookiesfrombrowser'] = (args.cookies_browser,)
             if meta.get('source_kind') == 'local' and (not meta.get('media') or not Path(meta['media']).is_file()):
                 raise ValueError('本地上传文件已不存在，请重新上传')

@@ -192,6 +192,8 @@ YouTube人工登录窗口使用已安装的正式版Chrome直接启动，不由P
 
 新上传千问的音频以固定任务序号和标题命名，例如“52 - 标题”，与工具任务列表及Word文件保持一致。重试和删除不会改变序号；已经上传的旧云端记录保留原名称和删除匹配信息，不重新上传。
 
+YouTube 登录或人机验证由所有任务共用一个专用 Chrome 窗口及登录目录。等待中的任务共用验证结果，完成后 10 分钟内不会重复弹窗；后续下载优先复用已保存的登录状态。任意等待任务上的手动确认按钮可通知所有等待任务继续。专用登录目录仅在本机 work/ 内，禁止上传或分享。网站仍可能再次要求验证。更新后请先完成并关闭旧验证窗口，再运行“加载本次更新.command”；已失败的任务可以重试。
+
 ## 仅收到本文档：完整源码
 
 AI Agent 可按 FILE 标记逐个提取文件，再核对文件校验.json；运行 `bash install.sh`。仅提取这里列出的公开源码，不迁移他人的登录资料。
@@ -2109,7 +2111,11 @@ def prepare(args):
             node = Path.home() / '.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node'
             if node.exists():
                 options['js_runtimes'] = {'node': {'path': str(node)}}
-            if args.cookies_browser:
+            from youtube_verification import saved_profile
+            youtube_profile = saved_profile(job) if 'youtube.com' in args.url or 'youtu.be' in args.url else None
+            if youtube_profile:
+                options['cookiesfrombrowser'] = ('chrome', str(youtube_profile.resolve()))
+            if args.cookies_browser and not youtube_profile:
                 options['cookiesfrombrowser'] = (args.cookies_browser,)
             if meta.get('source_kind') == 'local' and (not meta.get('media') or not Path(meta['media']).is_file()):
                 raise ValueError('本地上传文件已不存在，请重新上传')
@@ -3760,7 +3766,7 @@ class VerificationTests(unittest.TestCase):
   from unittest.mock import patch,Mock
   from youtube_verification import verify
   with tempfile.TemporaryDirectory() as tmp:
-   job=Path(tmp);cookies=job/'youtube-manual-chrome/Default/Cookies';cookies.parent.mkdir(parents=True);cookies.touch()
+   job=Path(tmp)/'work/jobs/task';job.mkdir(parents=True);cookies=job.parent.parent/'youtube-verification/youtube-manual-chrome/Default/Cookies';cookies.parent.mkdir(parents=True);cookies.touch()
    with patch('youtube_verification.chrome_path',return_value=Path('/chrome')),patch('youtube_verification.subprocess.Popen') as launch:
     verify('https://www.youtube.com/watch?v=test',job,{},Mock())
     args=launch.call_args.args[0]
@@ -3775,6 +3781,50 @@ class VerificationTests(unittest.TestCase):
    job=Path(tmp);(job/'job.json').write_text(json.dumps({'state':'youtube_verifying'}));self.assertTrue(confirm(job)['ok']);self.assertTrue((job/'youtube-verification-confirmed').exists())
    (job/'job.json').write_text(json.dumps({'state':'completed'}))
    with self.assertRaises(ValueError):confirm(job)
+
+ def test_two_tasks_reuse_one_window(self):
+  import tempfile
+  from pathlib import Path
+  from unittest.mock import patch,Mock
+  from youtube_verification import verify,shared_root
+  with tempfile.TemporaryDirectory() as tmp:
+   jobs=[Path(tmp)/'work/jobs'/str(i) for i in range(2)]
+   for job in jobs:job.mkdir(parents=True)
+   cookies=shared_root(jobs[0])/'youtube-manual-chrome/Default/Cookies';cookies.parent.mkdir(parents=True);cookies.touch()
+   with patch('youtube_verification.chrome_path',return_value=Path('/chrome')),patch('youtube_verification.subprocess.Popen') as launch:
+    first=verify('https://youtube.com/watch?v=one',jobs[0],{},Mock())
+    second=verify('https://youtube.com/watch?v=two',jobs[1],{},Mock())
+    self.assertEqual(first,second);self.assertEqual(launch.call_count,1)
+
+ def test_any_waiting_task_can_confirm_shared_window(self):
+  import tempfile,json
+  from pathlib import Path
+  from youtube_verification import confirm,shared_root
+  with tempfile.TemporaryDirectory() as tmp:
+   job=Path(tmp)/'work/jobs/task';job.mkdir(parents=True)
+   (job/'job.json').write_text(json.dumps({'state':'youtube_verifying','youtube_shared_verification':True}))
+   confirm(job);self.assertTrue((shared_root(job)/'confirmed').exists())
+
+ def test_concurrent_tasks_wait_for_one_window(self):
+  import tempfile,time,threading
+  from concurrent.futures import ThreadPoolExecutor
+  from pathlib import Path
+  from unittest.mock import patch,Mock
+  from youtube_verification import verify,shared_root
+  with tempfile.TemporaryDirectory() as tmp:
+   jobs=[Path(tmp)/'work/jobs'/str(i) for i in range(2)]
+   for job in jobs:job.mkdir(parents=True)
+   cookies=shared_root(jobs[0])/'youtube-manual-chrome/Default/Cookies';cookies.parent.mkdir(parents=True);cookies.touch()
+   opened=threading.Event();release=threading.Event()
+   process=Mock();process.poll.side_effect=lambda:0 if release.is_set() else None
+   def launch(*args,**kwargs):opened.set();return process
+   with patch('youtube_verification.chrome_path',return_value=Path('/chrome')),patch('youtube_verification.subprocess.Popen',side_effect=launch) as popen:
+    with ThreadPoolExecutor(max_workers=2) as pool:
+     a=pool.submit(verify,'https://youtube.com/a',jobs[0],{},Mock())
+     self.assertTrue(opened.wait(2))
+     b=pool.submit(verify,'https://youtube.com/b',jobs[1],{},Mock())
+     time.sleep(.1);self.assertFalse(b.done());release.set()
+     self.assertEqual(a.result(timeout=3),b.result(timeout=3));self.assertEqual(popen.call_count,1)
 ```
 
 ### FILE: tools/build_guides.py
@@ -3816,7 +3866,8 @@ print(f'Rebuilt guides with {len(files)} public source files.')
 ### FILE: youtube_verification.py
 ```text
 """Human login in normal installed Chrome, with a dedicated private profile."""
-import os,time,subprocess,sys
+import os,time,subprocess,sys,json
+from runtime_compat import file_lock
 from pathlib import Path
 
 def needs_verification(message):
@@ -3830,24 +3881,57 @@ def chrome_path():
         if path.is_file():return path
     raise RuntimeError('未找到正式版Google Chrome，请安装后再重试YouTube验证')
 
+REUSE_SECONDS = 600
+
+def shared_root(job):
+    return job.parent.parent / 'youtube-verification'
+
+def saved_profile(job):
+    profile = shared_root(job) / 'youtube-manual-chrome'
+    return profile if any((profile / 'Default' / p).is_file() for p in ('Network/Cookies', 'Cookies')) else None
+
+def recently_verified(root):
+    try:
+        age = time.time() - float((root / 'verified-at').read_text())
+        return 0 <= age < REUSE_SECONDS
+    except (OSError, ValueError):
+        return False
+
 def verify(url,job,meta,save,timeout=900):
-    # A separate profile: never launches or reads the user's everyday Chrome profile.
-    profile=job/'youtube-manual-chrome'
-    profile.mkdir(parents=True,exist_ok=True)
-    meta.update(state='youtube_verifying',error='请在弹出的Chrome专用窗口完成YouTube登录或验证，然后关闭该专用窗口；工具自动重试下载。')
+    root = shared_root(job)
+    root.mkdir(parents=True,exist_ok=True)
+    profile = root / 'youtube-manual-chrome'
+    marker = root / 'confirmed'
+    meta.update(state='youtube_verifying',youtube_shared_verification=True,
+        error='等待共享YouTube验证：只需在一个专用窗口完成登录或验证并关闭窗口，所有等待任务将继续。')
     save(job/'job.json',meta)
-    marker=job/'youtube-verification-confirmed'
-    marker.unlink(missing_ok=True)
-    process=subprocess.Popen([str(chrome_path()),'--user-data-dir='+str(profile.resolve()),'--no-first-run','--no-default-browser-check','--disable-background-mode','--new-window',url],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-    deadline=time.monotonic()+timeout
-    while process.poll() is None and not marker.exists():
-        if time.monotonic()>deadline:
-            raise RuntimeError('YouTube验证窗口仍未关闭；请完成登录并关闭专用窗口后手动确认。')
-        time.sleep(.5)
-    marker.unlink(missing_ok=True)
-    if not (profile/'Default'/'Network'/'Cookies').is_file() and not (profile/'Default'/'Cookies').is_file():
-        raise RuntimeError('Chrome未保存验证会话，请在专用窗口完成登录后再重试')
-    return profile
+    deadline = time.monotonic()+timeout
+    with (root / 'session.lock').open('a') as lock:
+        while True:
+            try:
+                file_lock.flock(lock,file_lock.LOCK_EX | file_lock.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise RuntimeError('等待共享YouTube验证超时，请完成专用窗口验证后重试')
+                time.sleep(.5)
+        try:
+            if recently_verified(root) and saved_profile(job):
+                return profile
+            profile.mkdir(parents=True,exist_ok=True)
+            marker.unlink(missing_ok=True)
+            process=subprocess.Popen([str(chrome_path()),'--user-data-dir='+str(profile.resolve()),'--no-first-run','--no-default-browser-check','--disable-background-mode','--new-window',url],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+            while process.poll() is None and not marker.exists():
+                if time.monotonic()>deadline:
+                    raise RuntimeError('YouTube验证窗口仍未关闭；请完成登录并关闭专用窗口后手动确认。')
+                time.sleep(.5)
+            marker.unlink(missing_ok=True)
+            if not saved_profile(job):
+                raise RuntimeError('Chrome未保存验证会话，请在专用窗口完成登录后再重试')
+            (root / 'verified-at').write_text(str(time.time()))
+            return profile
+        finally:
+            file_lock.flock(lock,file_lock.LOCK_UN)
 
 def confirm(job):
     import json
@@ -3855,7 +3939,11 @@ def confirm(job):
     if not record.is_file():raise ValueError('任务不存在')
     meta=json.loads(record.read_text())
     if meta.get('state')!='youtube_verifying':raise ValueError('任务当前不在等待YouTube验证，请刷新页面')
-    (job/'youtube-verification-confirmed').touch()
+    if meta.get('youtube_shared_verification'):
+        root=shared_root(job);root.mkdir(parents=True,exist_ok=True)
+        (root/'confirmed').touch()
+    else:
+        (job/'youtube-verification-confirmed').touch()
     return {'ok':True,'message':'已确认关闭验证窗口，正在继续原任务，请稍候。'}
 ```
 
@@ -4040,7 +4128,7 @@ exit $result
   "install.sh": "abead2c9d17bc14579905cab745be4220776c7d954a96042028c7b4855164826",
   "launch_service.py": "2cadb70ee153b678af24a6eb9e911d7e6e2ae4906ca8d3115ff8bb723d516dba",
   "qianwen_browser.py": "7b380bde0713ddc2b8717787f2e56412e1331f0ca1dec70e032ce6336f920427",
-  "reader.py": "d0212d4ccca88ab6367be92aee6138edaa8fa4dbebaf2fcdcf430082a83dd29b",
+  "reader.py": "18cbdb7df94172e178e64f2ab0e5c8bfaaafcbd0565e41af6f559d1c17c04c6a",
   "requirements.txt": "ca2ed115c7d5ef1c7d63e54519aa39795e35d48d74ac5e8b7be278ccc8e7f083",
   "runtime_compat.py": "88356cfde1ee32b4a9100f48ee374ed7e5ac0ba558f6a8626dde430c10b1191f",
   "runtime_status.py": "53e0df100829fd59b385b1fbdddb8bb0da17ff0a5ba88d91c2fb4b29ba2d5c3a",
@@ -4061,9 +4149,9 @@ exit $result
   "test_runtime_status.py": "4b255845c0a0fdb89f76f0fbd04d43d0162c35428ebef9ff3724470abbe6baca",
   "test_task_controls.py": "4c7ef80bd87e091c6140d660cacd406f932048ba89809b4a9236e1b327d3b9b5",
   "test_task_numbering.py": "0c1223029045edc6ff1210b2376505722b4e30f62ba4ab33c7d340042925afc8",
-  "test_youtube_verification.py": "b6eaf70305d72e1399b1251d0134db9621c87e42e3d3b1de5951f8ae29cc6218",
+  "test_youtube_verification.py": "80a4e86f691f5d8996ee4db7c21663f59becec74bda71a5045ba45385c2bb5dc",
   "tools/build_guides.py": "bab736160e519602158394a37bc7fda1d6093336692664de320ae4da03f2e296",
-  "youtube_verification.py": "67849c06e73f6dae626c89267652f923ec626a0301a827e5516b9c0cce9886cf",
+  "youtube_verification.py": "f5b8f2ea1901a0ad10f8ad18ff4854ec7057af3e06f784c8c962756b5b7c4e60",
   "修复浏览器占用并加载更新.command": "518dadc5853e369bd88d24645d55c42ef7af42595edd8f88defe62c3bb5a32d6",
   "停用自动启动.command": "0c2353cd41fd56b737864d09d6fe83f8b7d62cc1c51757e86fe0bc6bbd76b682",
   "切换千问并清理本地模型.command": "39ae5c718d5854f9fec85e13cd2c6fc683cb3c07844dffdd29697f97cfeeaaf4",
