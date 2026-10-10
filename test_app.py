@@ -153,6 +153,7 @@ class SynchronizedDeleteTests(unittest.TestCase):
     def test_partial_failure_keeps_cloud_success_in_report(self):
         report=app.deletion_report(False,'deleted','文件被占用')
         self.assertEqual(report['elements'][2]['detail'],'删除成功')
+        self.assertEqual([e['status'] for e in report['elements']],['failed','failed','success'])
         self.assertIn('未全部删除成功',report['elements'][1]['detail'])
         self.assertIn('文件被占用',report['message'])
 

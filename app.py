@@ -176,9 +176,9 @@ def deletion_report(success, cloud_status, error=''):
            'not_found':'未找到对应千问记录，未执行云端删除；本机清理按成功处理'}
     local='删除成功' if success else '未删除成功，任务已保留'
     files='删除成功（已移入废纸篓）' if success else ('未全部删除成功，请检查并重试' if cloud_status in cloud else '未执行删除，文件已保留')
-    elements=[{'label':'工具任务列表记录','detail':local},
-              {'label':'本机文稿及任务文件','detail':files},
-              {'label':'对应的千问记录','detail':cloud.get(cloud_status,'删除失败：'+error)}]
+    elements=[{'label':'工具任务列表记录','detail':local,'status':'success' if success else 'failed'},
+              {'label':'本机文稿及任务文件','detail':files,'status':'success' if success else 'failed'},
+              {'label':'对应的千问记录','detail':cloud.get(cloud_status,'删除失败：'+error),'status':'success' if cloud_status in cloud else 'failed'}]
     message=('删除成功' if success else '删除失败')+'\n'+'\n'.join(e['label']+'：'+e['detail'] for e in elements)
     if not success and cloud_status in cloud:message+='\n失败原因：'+error
     return {'status':'success' if success else 'failed','message':message,'elements':elements,'at':time.time()}
