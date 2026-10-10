@@ -137,7 +137,7 @@ bash install.sh --start-only --open  # 启动已安装工具并验证；不重�
 
 ## 安装验收与验证范围
 
-Windows 的 PowerShell 完整入口、Chromium 下载/启动、全部测试、pip check、服务健康检查和重复启动已经通过 [GitHub 自动化验收](https://github.com/ZhangJP-wh/web-video-to-word/actions/runs/37683739032)。runner 预置了 Python/Node，因此 WinGet 缺环境安装、本人登录千问和实体新电脑安装不属于这次自动化验收。
+Windows 的 PowerShell 完整入口、Chromium 下载/启动、全部测试、pip check、服务健康检查和重复启动已经通过 [GitHub 自动化验收](https://github.com/ZhangJP-wh/web-video-to-word/actions/runs/37684113530)。runner 预置了 Python/Node，因此 WinGet 缺环境安装、本人登录千问和实体新电脑安装不属于这次自动化验收。
 
 安装入口运行 `test_reader test_app test_qianwen test_task_controls test_install test_runtime_compat` 全部测试及 pip check。安装器回归覆盖错误架构/Node版本、损坏环境保留与修复、符号链接保护、依赖失败中止、错误服务身份拒绝和正确服务复用。千问单元测试使用模拟结果，不调用用户账号。
 
