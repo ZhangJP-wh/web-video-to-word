@@ -135,10 +135,16 @@ def export_audio(audio, job, meta, save):
             page.screenshot(path=str(job/'browser-diagnostic.png'), full_page=True)
             (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
             page.get_by_role('button', name='导出', exact=True).click()
-            panel = page.get_by_role('tooltip')
+            panel = page.get_by_role('tooltip').filter(visible=True).first
+            panel.wait_for(state='visible',timeout=15000)
             checks = panel.get_by_role('checkbox')
-            if checks.count() != 5:
-                raise RuntimeError('千问导出界面已变化，停止导出并保留媒体')
+            from playwright.sync_api import expect
+            try:
+                expect(checks).to_have_count(5,timeout=15000)
+            except Exception as error:
+                page.screenshot(path=str(job/'browser-diagnostic.png'),full_page=True)
+                (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
+                raise RuntimeError('千问导出选项未正确加载（实际 '+str(checks.count())+' 项），保留媒体以便重试') from error
             checks.nth(0).check()
             for i in range(1, 5): checks.nth(i).uncheck()
             if not panel.get_by_text('.docx', exact=True).first.is_visible():

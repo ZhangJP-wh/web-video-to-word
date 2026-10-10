@@ -850,10 +850,16 @@ def export_audio(audio, job, meta, save):
             page.screenshot(path=str(job/'browser-diagnostic.png'), full_page=True)
             (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
             page.get_by_role('button', name='导出', exact=True).click()
-            panel = page.get_by_role('tooltip')
+            panel = page.get_by_role('tooltip').filter(visible=True).first
+            panel.wait_for(state='visible',timeout=15000)
             checks = panel.get_by_role('checkbox')
-            if checks.count() != 5:
-                raise RuntimeError('千问导出界面已变化，停止导出并保留媒体')
+            from playwright.sync_api import expect
+            try:
+                expect(checks).to_have_count(5,timeout=15000)
+            except Exception as error:
+                page.screenshot(path=str(job/'browser-diagnostic.png'),full_page=True)
+                (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text())
+                raise RuntimeError('千问导出选项未正确加载（实际 '+str(checks.count())+' 项），保留媒体以便重试') from error
             checks.nth(0).check()
             for i in range(1, 5): checks.nth(i).uncheck()
             if not panel.get_by_text('.docx', exact=True).first.is_visible():
@@ -1826,7 +1832,7 @@ exit $result
 ```text
 {
   "test_reader.py": "71fc155ea2c8eef538b119ee78a2a63118c02308aadde680f6f483829d036626",
-  "qianwen_browser.py": "f30408557e01d5ea5345f9d50e04cb5f9a1604a7178fa2bc1e444d752468d977",
+  "qianwen_browser.py": "6c1b9e88c87c6395a150cb3f6629026e7b7776bf53cd828aee0db44037854c5f",
   "测试千问后台流程.command": "365ea7c455b38238341c79e3f2db6531de8053c34a909c4a210a19248a680c8c",
   "smoke_qianwen.py": "5a41ae58b74a8f2edaaadeb36c60235646989c5bdb2aa49e17d72dfd8778f71e",
   "index.html": "05131b2ec6b632fdfcb5da59d1fbd08a08591958b20a491857c6ba61f1ece0f2",
