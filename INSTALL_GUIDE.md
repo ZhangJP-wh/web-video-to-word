@@ -196,6 +196,8 @@ YouTube 登录或人机验证由所有任务共用一个专用 Chrome 窗口及�
 
 新任务生成 Word 后，会先确认文件已保存到目标文件夹，并通过结构、完整内容和文件校验，再自动删除对应的千问云端记录。仅定位本任务的上传记录；保存或校验失败时不删除。云端清理失败不影响已生成的 Word，任务卡片显示清理状态。此规则用于更新后完成的任务，不批量删除此前完成的记录。
 
+千问轮询会检查当前任务精确匹配记录的“任务失败”状态，确认失败后停止等待，并显示黄色“重新开始任务”按钮。重启会先清理对应失败云端记录，再使用保留的本机音频重新提交，保留原任务序号。检查发生在每轮等待中，页面网络延迟可能影响同步速度。
+
 ## 仅收到本文档：完整源码
 
 AI Agent 可按 FILE 标记逐个提取文件，再核对文件校验.json；运行 `bash install.sh`。仅提取这里列出的公开源码，不迁移他人的登录资料。
@@ -1051,7 +1053,7 @@ function taskHeading(j){return (j.task_number?j.task_number+' - ':'')+unnumbered
 function unnumberedHeading(j){let title=j.title;if(j.state==='queued')return '待处理 · '+(title||'正在获取标题（'+new URL(j.url).hostname+' / '+(new URL(j.url).searchParams.get('v')||new URL(j.url).pathname.split('/').filter(Boolean).pop()||j.id)+'）');return title||'正在获取标题 · '+j.id}
 function link(text,url,style){let a=document.createElement('a');a.textContent=text;a.href=url;if(style)a.className=style;return a}
 async function refreshDeletions(){try{let r=await fetch('/deletions');if(!r.ok)return;let reports=await r.json();for(let [id,report] of Object.entries(reports)){if(report.status==='pending'){deletionResults.set(id,report)}else if(deletionResults.get(id)?.status==='pending'){if(report.status==='success'){deletedTaskIds.add(id);deletionResults.delete(id);showDeletionResult(report,true)}else{deletionResults.set(id,report);showDeletionResult(report,false)}}}}catch(e){}}
-async function refresh(){const sequence=++refreshSequence;try{await refreshDeletions();let jobs=await(await fetch('/jobs')).json();if(sequence!==refreshSequence)return;jobs=jobs.filter(j=>!deletedTaskIds.has(j.id));jobs.sort((a,b)=>a.task_number&&b.task_number?b.task_number-a.task_number:(b.created_at??historicalTaskTimes[b.id]??b.added_at??Infinity)-(a.created_at??historicalTaskTimes[a.id]??a.added_at??Infinity));let host=document.querySelector('#jobs');host.replaceChildren();for(let j of jobs){let card=document.createElement('article');card.dataset.taskId=j.id;let h=document.createElement('h2');h.textContent=taskHeading(j);card.append(h);let p=document.createElement('p');p.textContent=(j.document&&!j.has_document)?'Word 文件已不在原保存位置，重新提交链接可生成':(stages[j.state]||'状态暂未识别：'+String(j.state));card.append(p);if(j.source_kind==='local'){let source=document.createElement('p');source.textContent=j.source_label;card.append(source)}else card.append(link('原网页',j.url));let deletion=deletionResults.get(j.id)||j.deletion_result;if(deletion){let status=document.createElement('p');status.className='delete-result';status.setAttribute('role','alert');status.style.color=deletion.status==='failed'?'#a52222':'#8b4520';renderDeletionResult(status,deletion);card.append(status)}if(j.error){let err=document.createElement('p');err.textContent=j.error;card.append(err)}if(j.cloud_cleanup_state){let cloud=document.createElement('p');cloud.textContent=j.cloud_cleanup_state==='pending'?'Word 已保存，正在删除对应的千问记录…':j.cloud_cleanup_state==='completed'?'对应的千问记录已清理。':'Word 已保存；千问记录尚未清理：'+(j.cloud_cleanup_error||'请稍后在千问中检查');card.append(cloud)}if(j.cleanup_error){let note=document.createElement('p');note.textContent='Word 已生成，但部分临时文件未清理：'+j.cleanup_error;card.append(note)}if(j.has_document){let actions=document.createElement('p');actions.className='actions';actions.append(link('查看 Word 文稿','/preview/'+j.id,'action'));let reveal=document.createElement('button');reveal.type='button';reveal.className='secondary';reveal.textContent='打开文档所在位置';let revealStatus=document.createElement('small');revealStatus.setAttribute('role','status');reveal.onclick=async()=>{reveal.disabled=true;revealStatus.textContent='正在打开文件夹…';try{await post('/reveal/'+j.id,{});revealStatus.textContent='已打开 Finder 文件夹。';msg.textContent='已打开文档所在的 Finder 文件夹。'}catch(e){revealStatus.textContent='打开失败：'+e.message;msg.textContent='打开失败：'+e.message}finally{reveal.disabled=false}};actions.append(reveal);actions.append(revealStatus);card.append(actions);let note=document.createElement('small');note.textContent=j.temporary_files_removed?(j.media_trashed?'原音视频已移入废纸篓，临时音轨已清理。':'原音视频与临时音轨已清理。'):'Word 内容未经人工校对。';card.append(note)}let controls=document.createElement('p');controls.className='actions';if(j.state==='youtube_verifying'){let resume=document.createElement('button');resume.className='retry-task';resume.textContent='已关闭验证弹窗，重新开始任务';resume.onclick=async()=>{resume.disabled=true;try{let result=await post('/youtube/confirm/'+j.id,{});msg.textContent=result.message;await refresh()}catch(e){msg.textContent=e.message;resume.disabled=false}};controls.append(resume)}if(j.state==='failed'||j.state==='login_required'){let retry=document.createElement('button');retry.textContent='重试任务';retry.className='retry-task';retry.onclick=async()=>{try{await post('/jobs',{url:j.url,engine:'qianwen'});await refresh()}catch(e){msg.textContent=e.message}};controls.append(retry)}let remove=document.createElement('button');remove.type='button';remove.className='secondary';remove.style.color='#a52222';remove.textContent='删除任务记录';if(deletion?.status==='pending'){remove.disabled=true;remove.textContent='正在同步删除…'}remove.onclick=async()=>{if(!confirm('删除“'+(j.title||j.id)+'”？将停止该任务，把本机任务文件和相关文稿移入废纸篓。同时删除对应的千问云端记录，云端删除后无法恢复。'))return;deletionResults.set(j.id,{status:'pending',message:'正在删除并同步到千问，请稍候…'});msg.className='';msg.textContent='正在删除并同步到千问，请稍候…';remove.disabled=true;remove.textContent='正在同步删除…';try{let health=await(await fetch('/health')).json();if(!health.cloud_delete)throw Error('请先双击加载本次更新.command启用千问同步删除');await requireControls();let r=await post('/delete/'+j.id,{});if(r.deletion_result?.status==='pending'){deletionResults.set(j.id,r.deletion_result);msg.className='';renderDeletionResult(msg,r.deletion_result);await refresh();return}deletedTaskIds.add(j.id);++refreshSequence;document.querySelectorAll('article[data-task-id="'+j.id+'"]').forEach(node=>node.remove());deletionResults.delete(j.id);showDeletionResult(r.deletion_result||{status:'success',message:r.message},true);await refresh()}catch(e){let message=e.deletionResult?.message||('删除失败\n工具任务列表记录：未删除成功\n本机文稿及任务文件：未确认删除成功\n对应的千问记录：未确认删除成功\n原因：'+e.message);let report=e.deletionResult||{status:'failed',message};deletionResults.set(j.id,report);showDeletionResult(report,false);let status=card.querySelector('.delete-result');if(!status){status=document.createElement('p');status.className='delete-result';status.setAttribute('role','alert');card.append(status)}status.style.color='#a52222';renderDeletionResult(status,report);remove.disabled=false;remove.textContent='删除任务记录'}};if(j.has_document){card.querySelector('.actions').append(remove)}else{controls.append(remove)}if(controls.children.length)card.append(controls);host.append(card)}await refreshLogin()}catch(e){msg.textContent='后台连接中断，请重新启动工具。'}}
+async function refresh(){const sequence=++refreshSequence;try{await refreshDeletions();let jobs=await(await fetch('/jobs')).json();if(sequence!==refreshSequence)return;jobs=jobs.filter(j=>!deletedTaskIds.has(j.id));jobs.sort((a,b)=>a.task_number&&b.task_number?b.task_number-a.task_number:(b.created_at??historicalTaskTimes[b.id]??b.added_at??Infinity)-(a.created_at??historicalTaskTimes[a.id]??a.added_at??Infinity));let host=document.querySelector('#jobs');host.replaceChildren();for(let j of jobs){let card=document.createElement('article');card.dataset.taskId=j.id;let h=document.createElement('h2');h.textContent=taskHeading(j);card.append(h);let p=document.createElement('p');p.textContent=(j.document&&!j.has_document)?'Word 文件已不在原保存位置，重新提交链接可生成':(stages[j.state]||'状态暂未识别：'+String(j.state));if(j.qianwen_task_failed&&j.state==='failed')p.textContent='千问任务失败，进度已保留';card.append(p);if(j.source_kind==='local'){let source=document.createElement('p');source.textContent=j.source_label;card.append(source)}else card.append(link('原网页',j.url));let deletion=deletionResults.get(j.id)||j.deletion_result;if(deletion){let status=document.createElement('p');status.className='delete-result';status.setAttribute('role','alert');status.style.color=deletion.status==='failed'?'#a52222':'#8b4520';renderDeletionResult(status,deletion);card.append(status)}if(j.error){let err=document.createElement('p');err.textContent=j.error;card.append(err)}if(j.cloud_cleanup_state){let cloud=document.createElement('p');cloud.textContent=j.cloud_cleanup_state==='pending'?'Word 已保存，正在删除对应的千问记录…':j.cloud_cleanup_state==='completed'?'对应的千问记录已清理。':'Word 已保存；千问记录尚未清理：'+(j.cloud_cleanup_error||'请稍后在千问中检查');card.append(cloud)}if(j.cleanup_error){let note=document.createElement('p');note.textContent='Word 已生成，但部分临时文件未清理：'+j.cleanup_error;card.append(note)}if(j.has_document){let actions=document.createElement('p');actions.className='actions';actions.append(link('查看 Word 文稿','/preview/'+j.id,'action'));let reveal=document.createElement('button');reveal.type='button';reveal.className='secondary';reveal.textContent='打开文档所在位置';let revealStatus=document.createElement('small');revealStatus.setAttribute('role','status');reveal.onclick=async()=>{reveal.disabled=true;revealStatus.textContent='正在打开文件夹…';try{await post('/reveal/'+j.id,{});revealStatus.textContent='已打开 Finder 文件夹。';msg.textContent='已打开文档所在的 Finder 文件夹。'}catch(e){revealStatus.textContent='打开失败：'+e.message;msg.textContent='打开失败：'+e.message}finally{reveal.disabled=false}};actions.append(reveal);actions.append(revealStatus);card.append(actions);let note=document.createElement('small');note.textContent=j.temporary_files_removed?(j.media_trashed?'原音视频已移入废纸篓，临时音轨已清理。':'原音视频与临时音轨已清理。'):'Word 内容未经人工校对。';card.append(note)}let controls=document.createElement('p');controls.className='actions';if(j.state==='youtube_verifying'){let resume=document.createElement('button');resume.className='retry-task';resume.textContent='已关闭验证弹窗，重新开始任务';resume.onclick=async()=>{resume.disabled=true;try{let result=await post('/youtube/confirm/'+j.id,{});msg.textContent=result.message;await refresh()}catch(e){msg.textContent=e.message;resume.disabled=false}};controls.append(resume)}if(j.state==='failed'||j.state==='login_required'){let retry=document.createElement('button');retry.textContent=j.qianwen_task_failed?'重新开始任务':'重试任务';retry.className='retry-task';retry.onclick=async()=>{try{await post('/jobs',{url:j.url,engine:'qianwen'});await refresh()}catch(e){msg.textContent=e.message}};controls.append(retry)}let remove=document.createElement('button');remove.type='button';remove.className='secondary';remove.style.color='#a52222';remove.textContent='删除任务记录';if(deletion?.status==='pending'){remove.disabled=true;remove.textContent='正在同步删除…'}remove.onclick=async()=>{if(!confirm('删除“'+(j.title||j.id)+'”？将停止该任务，把本机任务文件和相关文稿移入废纸篓。同时删除对应的千问云端记录，云端删除后无法恢复。'))return;deletionResults.set(j.id,{status:'pending',message:'正在删除并同步到千问，请稍候…'});msg.className='';msg.textContent='正在删除并同步到千问，请稍候…';remove.disabled=true;remove.textContent='正在同步删除…';try{let health=await(await fetch('/health')).json();if(!health.cloud_delete)throw Error('请先双击加载本次更新.command启用千问同步删除');await requireControls();let r=await post('/delete/'+j.id,{});if(r.deletion_result?.status==='pending'){deletionResults.set(j.id,r.deletion_result);msg.className='';renderDeletionResult(msg,r.deletion_result);await refresh();return}deletedTaskIds.add(j.id);++refreshSequence;document.querySelectorAll('article[data-task-id="'+j.id+'"]').forEach(node=>node.remove());deletionResults.delete(j.id);showDeletionResult(r.deletion_result||{status:'success',message:r.message},true);await refresh()}catch(e){let message=e.deletionResult?.message||('删除失败\n工具任务列表记录：未删除成功\n本机文稿及任务文件：未确认删除成功\n对应的千问记录：未确认删除成功\n原因：'+e.message);let report=e.deletionResult||{status:'failed',message};deletionResults.set(j.id,report);showDeletionResult(report,false);let status=card.querySelector('.delete-result');if(!status){status=document.createElement('p');status.className='delete-result';status.setAttribute('role','alert');card.append(status)}status.style.color='#a52222';renderDeletionResult(status,report);remove.disabled=false;remove.textContent='删除任务记录'}};if(j.has_document){card.querySelector('.actions').append(remove)}else{controls.append(remove)}if(controls.children.length)card.append(controls);host.append(card)}await refreshLogin()}catch(e){msg.textContent='后台连接中断，请重新启动工具。'}}
 refresh();setInterval(refresh,6000);
 </script></html>
 ```
@@ -1832,6 +1834,7 @@ def export_audio(audio, job, meta, save):
                 deadline = time.monotonic() + 6 * 3600
                 while time.monotonic() < deadline:
                     require_login_if_visible(page)
+                    require_task_not_failed(page,title,job,meta,save)
                     require_cloud_available(page)
                     from playwright.sync_api import TimeoutError as BrowserTimeout
                     try:
@@ -1841,6 +1844,7 @@ def export_audio(audio, job, meta, save):
                             meta['qianwen_url']=page.url;save(job/'job.json',meta)
                         page.get_by_role('button', name='导出', exact=True).wait_for(timeout=10000)
                     except BrowserTimeout:
+                        require_task_not_failed(page,title,job,meta,save)
                         page.screenshot(path=str(job/'browser-diagnostic.png'),full_page=True)
                         (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text(), encoding="utf-8")
                         meta['last_browser_check']=time.time();save(job/'job.json',meta)
@@ -1850,6 +1854,7 @@ def export_audio(audio, job, meta, save):
                     break
                 else:
                     raise RuntimeError('千问处理超过等待上限，保留媒体以便检查')
+            require_task_not_failed(page,upload.stem,job,meta,save)
             meta['state']='cloud_exporting';save(job/'job.json',meta)
             page.get_by_role('button', name='导出', exact=True).wait_for(timeout=60000)
             page.screenshot(path=str(job/'browser-diagnostic.png'), full_page=True)
@@ -1873,6 +1878,21 @@ def export_audio(audio, job, meta, save):
     auth_state('valid')
     upload.unlink(missing_ok=True)
     return raw
+
+
+def require_task_not_failed(page, title, job, meta, save):
+    """Inspect only this task's exact row, never another failed record."""
+    if '/efficiency/doc/transcripts/' in page.url:
+        failed=page.get_by_text('任务失败',exact=True).is_visible()
+    else:
+        rows=page.locator('[data-e2e-test-id="folders_item_div"]').filter(has=page.get_by_text(title,exact=True))
+        failed=rows.count()==1 and rows.get_by_text('任务失败',exact=True).is_visible()
+    meta['last_browser_check']=time.time()
+    if failed:
+        meta.update(state='failed',qianwen_task_failed=True,error='千问已确认任务失败，本机音频已保留。请点击“重新开始任务”。')
+        save(job/'job.json',meta)
+        raise RuntimeError(meta['error'])
+    save(job/'job.json',meta)
 
 
 def delete_cloud_record(page, job, meta, save):
@@ -2099,6 +2119,19 @@ def prepare(args):
             if meta.get('state') == 'completed' and (job / 'raw-transcript.json').exists():
                 build_document(job)
                 return
+        if meta.get('qianwen_task_failed'):
+            from qianwen_browser import delete_cloud
+            try:
+                delete_cloud(job)
+            except Exception as error:
+                meta.update(state='failed',error='重新开始前未能清理千问失败记录：'+str(error))
+                save_json(job/'job.json',meta)
+                raise
+            meta=json.loads((job/'job.json').read_text())
+            for key in list(meta):
+                if key.startswith('qianwen_') or key.startswith('cloud_cleanup_'):
+                    meta.pop(key,None)
+            save_json(job/'job.json',meta)
         meta.setdefault('created_at', getattr(job.stat(), 'st_birthtime', job.stat().st_mtime))
         meta.pop('error', None)
         meta['state'] = 'downloading'
@@ -3427,6 +3460,27 @@ class CloudDeleteSafetyTests(unittest.TestCase):
         self.assertFalse(meta.get('qianwen_cloud_deleted',False))
 
 if __name__=='__main__':unittest.main()
+
+class CloudTaskFailureTests(unittest.TestCase):
+    def test_exact_failed_task_is_recorded(self):
+        from unittest.mock import Mock
+        from pathlib import Path
+        from qianwen_browser import require_task_not_failed
+        page=Mock();page.url='https://www.qianwen.com/efficiency';row=page.locator.return_value.filter.return_value
+        row.count.return_value=1;row.get_by_text.return_value.is_visible.return_value=True
+        meta={};save=Mock()
+        with self.assertRaises(RuntimeError):require_task_not_failed(page,'7 - title',Path('/tmp/job'),meta,save)
+        self.assertTrue(meta['qianwen_task_failed']);self.assertEqual(meta['state'],'failed')
+        page.get_by_text.assert_called_with('7 - title',exact=True)
+
+    def test_other_failed_records_do_not_fail_current_task(self):
+        from unittest.mock import Mock
+        from pathlib import Path
+        from qianwen_browser import require_task_not_failed
+        page=Mock();page.url='https://www.qianwen.com/efficiency';row=page.locator.return_value.filter.return_value
+        row.count.return_value=0;meta={}
+        require_task_not_failed(page,'7 - title',Path('/tmp/job'),meta,Mock())
+        self.assertNotIn('qianwen_task_failed',meta)
 ```
 
 ### FILE: test_reader.py
@@ -4190,14 +4244,14 @@ exit $result
   "check_recovery.py": "7fb929eabc113b13551764fe57caa4f72e7f37f6cded04a75c590fe54e1a3d2d",
   "cloud_migration.py": "cc5c02b953f404a280f0230e836ff9a5fe04f3e7002361ef9b8b8cdc244c07a0",
   "deletion_queue.py": "f9fef20b033ab62baa5fd40b4e1ce383d4bed3c8dde54f80a468417c03dc3cad",
-  "index.html": "40615aede8fdd8a5b942103e57f57a7705c6c1bb3bd7592182eac2129436574e",
+  "index.html": "414754d714297d7a5d6066da74777c68f61da44c1fa8ec625a68a9c4784bdde2",
   "install-windows.cmd": "181344afef4643cc95c8098d5839cdf8df98963e8d05a13991deb41c8a38c2ed",
   "install-windows.ps1": "727a49a50e928b435c2863aff20dd8b20be4b0c5662d971c71ac8a4554dbaedd",
   "install.py": "8fb062e855fb41616c65923dc4ca43808d4c710fc8919d1cb62c039a1fb2144c",
   "install.sh": "abead2c9d17bc14579905cab745be4220776c7d954a96042028c7b4855164826",
   "launch_service.py": "2cadb70ee153b678af24a6eb9e911d7e6e2ae4906ca8d3115ff8bb723d516dba",
-  "qianwen_browser.py": "7b380bde0713ddc2b8717787f2e56412e1331f0ca1dec70e032ce6336f920427",
-  "reader.py": "e16d336fb71b6b727f66e7e9a9f02113fc68adb0670f4a94fb87457e5d878aed",
+  "qianwen_browser.py": "d2ca83f16f299db95720cfcfdc53e8e7e997cb1bd4901b1eaa9c203720fcd933",
+  "reader.py": "4805c0350c22ec75f1c087d477fa55272cf164975eafeeefb862d5375c2c8833",
   "requirements.txt": "ca2ed115c7d5ef1c7d63e54519aa39795e35d48d74ac5e8b7be278ccc8e7f083",
   "runtime_compat.py": "88356cfde1ee32b4a9100f48ee374ed7e5ac0ba558f6a8626dde430c10b1191f",
   "runtime_status.py": "53e0df100829fd59b385b1fbdddb8bb0da17ff0a5ba88d91c2fb4b29ba2d5c3a",
@@ -4212,7 +4266,7 @@ exit $result
   "test_deletion_queue.py": "172f0a40974d00804f6d7e0d0fbcdf72acc7178c1d301c7cfec678d88985db71",
   "test_export_download.py": "9a9df755dd836be1ffdabde04ea1da8021258db75be2c8b89c39c5b48bb3f605",
   "test_install.py": "5ecdd4f27fc1761c89a27fd5d623377f05315a318cbb622bbd615686798b4941",
-  "test_qianwen.py": "9fb2902cabfbb02f36b5ce3bed5c96205ba05b6b390833cae97e10ecafd78473",
+  "test_qianwen.py": "c6714e95259548f920bc8be68002d40c655aa9c5cfc30b0653bda3d37f6e374a",
   "test_reader.py": "4289023d7dca27570089bd22a6b7890494bcd78d6a2f4976d2ed1a4bf8333dc7",
   "test_runtime_compat.py": "e7e4d7ddc223a5586ab803f7969a4a6eb69861f64d1257b48f02ade15a939188",
   "test_runtime_status.py": "4b255845c0a0fdb89f76f0fbd04d43d0162c35428ebef9ff3724470abbe6baca",

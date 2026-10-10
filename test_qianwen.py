@@ -198,3 +198,24 @@ class CloudDeleteSafetyTests(unittest.TestCase):
         self.assertFalse(meta.get('qianwen_cloud_deleted',False))
 
 if __name__=='__main__':unittest.main()
+
+class CloudTaskFailureTests(unittest.TestCase):
+    def test_exact_failed_task_is_recorded(self):
+        from unittest.mock import Mock
+        from pathlib import Path
+        from qianwen_browser import require_task_not_failed
+        page=Mock();page.url='https://www.qianwen.com/efficiency';row=page.locator.return_value.filter.return_value
+        row.count.return_value=1;row.get_by_text.return_value.is_visible.return_value=True
+        meta={};save=Mock()
+        with self.assertRaises(RuntimeError):require_task_not_failed(page,'7 - title',Path('/tmp/job'),meta,save)
+        self.assertTrue(meta['qianwen_task_failed']);self.assertEqual(meta['state'],'failed')
+        page.get_by_text.assert_called_with('7 - title',exact=True)
+
+    def test_other_failed_records_do_not_fail_current_task(self):
+        from unittest.mock import Mock
+        from pathlib import Path
+        from qianwen_browser import require_task_not_failed
+        page=Mock();page.url='https://www.qianwen.com/efficiency';row=page.locator.return_value.filter.return_value
+        row.count.return_value=0;meta={}
+        require_task_not_failed(page,'7 - title',Path('/tmp/job'),meta,Mock())
+        self.assertNotIn('qianwen_task_failed',meta)

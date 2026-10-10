@@ -123,6 +123,19 @@ def prepare(args):
             if meta.get('state') == 'completed' and (job / 'raw-transcript.json').exists():
                 build_document(job)
                 return
+        if meta.get('qianwen_task_failed'):
+            from qianwen_browser import delete_cloud
+            try:
+                delete_cloud(job)
+            except Exception as error:
+                meta.update(state='failed',error='重新开始前未能清理千问失败记录：'+str(error))
+                save_json(job/'job.json',meta)
+                raise
+            meta=json.loads((job/'job.json').read_text())
+            for key in list(meta):
+                if key.startswith('qianwen_') or key.startswith('cloud_cleanup_'):
+                    meta.pop(key,None)
+            save_json(job/'job.json',meta)
         meta.setdefault('created_at', getattr(job.stat(), 'st_birthtime', job.stat().st_mtime))
         meta.pop('error', None)
         meta['state'] = 'downloading'

@@ -316,6 +316,7 @@ def export_audio(audio, job, meta, save):
                 deadline = time.monotonic() + 6 * 3600
                 while time.monotonic() < deadline:
                     require_login_if_visible(page)
+                    require_task_not_failed(page,title,job,meta,save)
                     require_cloud_available(page)
                     from playwright.sync_api import TimeoutError as BrowserTimeout
                     try:
@@ -325,6 +326,7 @@ def export_audio(audio, job, meta, save):
                             meta['qianwen_url']=page.url;save(job/'job.json',meta)
                         page.get_by_role('button', name='导出', exact=True).wait_for(timeout=10000)
                     except BrowserTimeout:
+                        require_task_not_failed(page,title,job,meta,save)
                         page.screenshot(path=str(job/'browser-diagnostic.png'),full_page=True)
                         (job/'browser-diagnostic.txt').write_text(page.locator('body').inner_text(), encoding="utf-8")
                         meta['last_browser_check']=time.time();save(job/'job.json',meta)
@@ -334,6 +336,7 @@ def export_audio(audio, job, meta, save):
                     break
                 else:
                     raise RuntimeError('千问处理超过等待上限，保留媒体以便检查')
+            require_task_not_failed(page,upload.stem,job,meta,save)
             meta['state']='cloud_exporting';save(job/'job.json',meta)
             page.get_by_role('button', name='导出', exact=True).wait_for(timeout=60000)
             page.screenshot(path=str(job/'browser-diagnostic.png'), full_page=True)
@@ -357,6 +360,21 @@ def export_audio(audio, job, meta, save):
     auth_state('valid')
     upload.unlink(missing_ok=True)
     return raw
+
+
+def require_task_not_failed(page, title, job, meta, save):
+    """Inspect only this task's exact row, never another failed record."""
+    if '/efficiency/doc/transcripts/' in page.url:
+        failed=page.get_by_text('任务失败',exact=True).is_visible()
+    else:
+        rows=page.locator('[data-e2e-test-id="folders_item_div"]').filter(has=page.get_by_text(title,exact=True))
+        failed=rows.count()==1 and rows.get_by_text('任务失败',exact=True).is_visible()
+    meta['last_browser_check']=time.time()
+    if failed:
+        meta.update(state='failed',qianwen_task_failed=True,error='千问已确认任务失败，本机音频已保留。请点击“重新开始任务”。')
+        save(job/'job.json',meta)
+        raise RuntimeError(meta['error'])
+    save(job/'job.json',meta)
 
 
 def delete_cloud_record(page, job, meta, save):
