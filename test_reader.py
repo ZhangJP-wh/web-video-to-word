@@ -156,3 +156,39 @@ class DownloadLinkTests(unittest.TestCase):
     def test_invalid_douyin_id_is_untouched(self):
         source='https://www.douyin.com/jingxuan?modal_id=invalid'
         self.assertEqual(reader.download_url(source),source)
+
+class CloudCleanupTests(PipelineTests):
+    def exported(self):
+        job,meta,audio=self.fixture()
+        meta['qianwen_url']='https://www.qianwen.com/test'
+        reader.save_json(job/'job.json',meta)
+        raw={'segments':[{'start':0,'end':1,'speaker':'发言人 1','text':'完整文字'}]}
+        reader.save_json(job/'raw-transcript.json',raw)
+        return job,meta,raw
+
+    def test_delete_only_after_word_is_saved_and_validated(self):
+        job,meta,raw=self.exported()
+        def deleted(folder):
+            saved=json.loads((folder/'job.json').read_text())
+            self.assertTrue(Path(saved['document']).is_file())
+            self.assertTrue((folder/'validation.json').is_file())
+            saved.update(qianwen_cloud_deleted=True,qianwen_delete_resolved=True)
+            reader.save_json(folder/'job.json',saved)
+        with patch('qianwen_browser.delete_cloud',side_effect=deleted) as delete:
+            path=reader.build_document(job,raw)
+        delete.assert_called_once_with(job.resolve())
+        saved=json.loads((job/'job.json').read_text())
+        self.assertEqual(saved['cloud_cleanup_state'],'completed');self.assertTrue(path.exists())
+
+    def test_cloud_failure_keeps_completed_word(self):
+        job,meta,raw=self.exported()
+        with patch('qianwen_browser.delete_cloud',side_effect=RuntimeError('登录失效')):
+            path=reader.build_document(job,raw)
+        saved=json.loads((job/'job.json').read_text())
+        self.assertEqual(saved['state'],'completed');self.assertEqual(saved['cloud_cleanup_state'],'failed');self.assertTrue(path.exists())
+
+    def test_invalid_word_never_deletes_cloud(self):
+        job,meta,raw=self.exported()
+        with patch.object(reader,'verify_document',side_effect=ValueError('损坏')),patch('qianwen_browser.delete_cloud') as delete:
+            with self.assertRaises(ValueError):reader.build_document(job,raw)
+        delete.assert_not_called()

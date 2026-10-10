@@ -372,7 +372,38 @@ def build_document(job, raw=None):
         save_json(job / 'job.json', meta)
     meta['state']='completed'
     save_json(job/'job.json',meta)
+    cleanup_cloud_after_export(job,meta)
     return path
+
+
+def cleanup_cloud_after_export(job, meta):
+    """Remove only this task's cloud record after verifying its final local Word."""
+    if meta.get('qianwen_delete_resolved') or not any(meta.get(k) for k in
+            ('qianwen_submitted','qianwen_submission_attempted','qianwen_url','qianwen_upload_confirmed')):
+        return
+    meta['cloud_cleanup_state']='pending'
+    save_json(job/'job.json',meta)
+    try:
+        path=Path(meta['document'])
+        if path.parent.resolve()!=OUTPUT.resolve() or not path.is_file():
+            raise ValueError('目标文件夹中尚未确认保存 Word，未删除千问记录')
+        report=json.loads((job/'validation.json').read_text())
+        if hashlib.sha256(path.read_bytes()).hexdigest()!=report['document_sha256']:
+            raise ValueError('Word 校验不一致，未删除千问记录')
+        raw=json.loads((job/'raw-transcript.json').read_text())
+        verify_document(path,meta,make_blocks(raw['segments']))
+        from qianwen_browser import delete_cloud
+        delete_cloud(job)
+        fresh=json.loads((job/'job.json').read_text())
+        meta.update(fresh)
+        if not meta.get('qianwen_delete_resolved'):
+            raise RuntimeError('尚未确认千问记录删除成功')
+        meta['cloud_cleanup_state']='completed'
+        meta.pop('cloud_cleanup_error',None)
+    except Exception as error:
+        meta['cloud_cleanup_state']='failed'
+        meta['cloud_cleanup_error']=str(error)
+    save_json(job/'job.json',meta)
 
 
 def main():
