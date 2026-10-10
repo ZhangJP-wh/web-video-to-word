@@ -104,3 +104,26 @@ class PipelineTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+class AudioExtractionTests(unittest.TestCase):
+    def test_real_silent_video_gives_readable_error_and_preserves_source(self):
+        import subprocess,imageio_ffmpeg
+        with tempfile.TemporaryDirectory() as tmp:
+            folder=Path(tmp);source=folder/'silent.mp4';target=folder/'temporary.wav'
+            executable=imageio_ffmpeg.get_ffmpeg_exe()
+            subprocess.run([executable,'-v','error','-f','lavfi','-i','color=size=16x16:rate=1','-t','1','-an',str(source)],check=True)
+            with self.assertRaisesRegex(ValueError,'没有音轨'):
+                reader.extract_audio(executable,source,target)
+            self.assertTrue(source.exists());self.assertFalse(target.exists())
+
+    def test_real_audio_extracts_readable_wave(self):
+        import subprocess,imageio_ffmpeg
+        with tempfile.TemporaryDirectory() as tmp:
+            folder=Path(tmp);source=folder/'sound.wav';target=folder/'temporary.wav'
+            executable=imageio_ffmpeg.get_ffmpeg_exe()
+            subprocess.run([executable,'-v','error','-f','lavfi','-i','sine=frequency=440:duration=1',str(source)],check=True)
+            reader.extract_audio(executable,source,target)
+            with wave.open(str(target)) as audio:
+                self.assertEqual(audio.getframerate(),16000)
+                self.assertEqual(audio.getnchannels(),1)
+                self.assertGreater(audio.getnframes(),0)

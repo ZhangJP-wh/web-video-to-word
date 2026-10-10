@@ -43,6 +43,10 @@
 
 下载依赖 certifi 的可信证书。已将 certifi 列为必需组件并保留，清理旧模型时不会移除；不关闭 HTTPS 证书校验。若下载出现 CERTIFICATE_VERIFY_FAILED，请在项目中执行 `.venv/bin/python -m pip install -r requirements.txt` 恢复依赖后重试。
 
+## 无声视频
+
+下载文件如果没有音轨，不能做语音识别。工具明确提示并保留媒体；如果网页播放有声音，请提供有声音的版本。工具不会把画面上的文字当作语音识别结果。
+
 ## 限制与隐私
 
 这是独立开源工具，“由千问提供支持”表示语音识别使用千问网页服务，不表示千问官方出品或合作授权。
@@ -64,7 +68,7 @@
 
 ## 验证说明
 
-本次 24 项测试通过，其中云端识别返回结果在单元测试中模拟；旧本地推理断点测试已移除。此前本机20秒音频的千问后台完整流程约46秒，不能推断长视频速度或识别准确率。未在另一台全新 Mac 完成安装实测。
+本次 26 项测试通过，其中云端识别返回结果在单元测试中模拟；旧本地推理断点测试已移除。此前本机20秒音频的千问后台完整流程约46秒，不能推断长视频速度或识别准确率。未在另一台全新 Mac 完成安装实测。
 
 ## 主要文件
 
@@ -992,6 +996,17 @@ def make_blocks(segments, limit=2200):
             for i, seg in enumerate(segments) if seg.get('text', '').strip()]
 
 
+def extract_audio(executable,media,destination):
+    result=subprocess.run([executable,'-nostdin','-v','error','-y','-i',str(media),
+                           '-vn','-ac','1','-ar','16000','-c:a','pcm_s16le',str(destination)],
+                          capture_output=True,text=True)
+    if result.returncode:
+        destination.unlink(missing_ok=True)
+        if 'does not contain any stream' in result.stderr:
+            raise ValueError('下载的视频没有音轨，无法生成语音文字稿。原视频已保留；如果原网页播放时有声音，请提供其他有声音的视频版本。')
+        raise ValueError('音频提取失败，原视频已保留。转换器提示：'+result.stderr.strip()[-600:])
+
+
 def prepare(args):
     import certifi
     os.environ['SSL_CERT_FILE'] = certifi.where()
@@ -1059,9 +1074,7 @@ def prepare(args):
             meta['audio'] = str(wav)
             if not wav.exists():
                 partial = wav.with_name('transcription-audio.partial.wav')
-                subprocess.run([ff, '-nostdin', '-v', 'error', '-y', '-i', meta['media'],
-                                '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le',
-                                str(partial)], check=True)
+                extract_audio(ff,Path(meta['media']),partial)
                 partial.replace(wav)
             with wave.open(str(wav)) as audio:
                 duration = audio.getnframes() / audio.getframerate()
@@ -1737,6 +1750,29 @@ class PipelineTests(unittest.TestCase):
 if __name__ == '__main__':
     unittest.main()
 
+class AudioExtractionTests(unittest.TestCase):
+    def test_real_silent_video_gives_readable_error_and_preserves_source(self):
+        import subprocess,imageio_ffmpeg
+        with tempfile.TemporaryDirectory() as tmp:
+            folder=Path(tmp);source=folder/'silent.mp4';target=folder/'temporary.wav'
+            executable=imageio_ffmpeg.get_ffmpeg_exe()
+            subprocess.run([executable,'-v','error','-f','lavfi','-i','color=size=16x16:rate=1','-t','1','-an',str(source)],check=True)
+            with self.assertRaisesRegex(ValueError,'没有音轨'):
+                reader.extract_audio(executable,source,target)
+            self.assertTrue(source.exists());self.assertFalse(target.exists())
+
+    def test_real_audio_extracts_readable_wave(self):
+        import subprocess,imageio_ffmpeg
+        with tempfile.TemporaryDirectory() as tmp:
+            folder=Path(tmp);source=folder/'sound.wav';target=folder/'temporary.wav'
+            executable=imageio_ffmpeg.get_ffmpeg_exe()
+            subprocess.run([executable,'-v','error','-f','lavfi','-i','sine=frequency=440:duration=1',str(source)],check=True)
+            reader.extract_audio(executable,source,target)
+            with wave.open(str(target)) as audio:
+                self.assertEqual(audio.getframerate(),16000)
+                self.assertEqual(audio.getnchannels(),1)
+                self.assertGreater(audio.getnframes(),0)
+
 ```
 
 ### FILE: test_task_controls.py
@@ -1906,7 +1942,7 @@ exit $result
 ### FILE: 文件校验.json
 ```text
 {
-  "test_reader.py": "71fc155ea2c8eef538b119ee78a2a63118c02308aadde680f6f483829d036626",
+  "test_reader.py": "cff139029d75e464f25a84e9f8e0283df6827691c1e125186fd1c82721ec4200",
   "qianwen_browser.py": "f19cd54031b7d7c3f4dfe4fa13b7b03a11dbe49b859d79f52a3c9570c26f3cc3",
   "测试千问后台流程.command": "365ea7c455b38238341c79e3f2db6531de8053c34a909c4a210a19248a680c8c",
   "smoke_qianwen.py": "5a41ae58b74a8f2edaaadeb36c60235646989c5bdb2aa49e17d72dfd8778f71e",
@@ -1918,7 +1954,7 @@ exit $result
   "首次安装.command": "3386934c6c62f0983f9d9ee8541bf0d73a4fa671be319201efa649bf71c28d32",
   "task_controls.py": "a420be2ff8a6b4fc833d126f235e8a249c521e2a8c30435b36ebdf7426579084",
   "test_task_controls.py": "2a0d1da5b7de5a52a5d3c0257dd989341bccf00ba3cda5fd57fe98db25842644",
-  "reader.py": "616bada6fec387b086514c859cd2f90fa578029507ebfca8b25408c58fafc2a5",
+  "reader.py": "480fb1b02df11b9d4b6f1cb8da486b6bf92ba6e3ac6095951cff5a7155c814bc",
   "切换千问并清理本地模型.command": "39ae5c718d5854f9fec85e13cd2c6fc683cb3c07844dffdd29697f97cfeeaaf4",
   "smoke_qianwen_runner.py": "10c6047ad2b7ae20cac3945b41f8afdc047975fd2da3ef0dc576f3753a512409",
   "cloud_migration.py": "cc5c02b953f404a280f0230e836ff9a5fe04f3e7002361ef9b8b8cdc244c07a0",

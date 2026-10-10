@@ -63,6 +63,17 @@ def make_blocks(segments, limit=2200):
             for i, seg in enumerate(segments) if seg.get('text', '').strip()]
 
 
+def extract_audio(executable,media,destination):
+    result=subprocess.run([executable,'-nostdin','-v','error','-y','-i',str(media),
+                           '-vn','-ac','1','-ar','16000','-c:a','pcm_s16le',str(destination)],
+                          capture_output=True,text=True)
+    if result.returncode:
+        destination.unlink(missing_ok=True)
+        if 'does not contain any stream' in result.stderr:
+            raise ValueError('下载的视频没有音轨，无法生成语音文字稿。原视频已保留；如果原网页播放时有声音，请提供其他有声音的视频版本。')
+        raise ValueError('音频提取失败，原视频已保留。转换器提示：'+result.stderr.strip()[-600:])
+
+
 def prepare(args):
     import certifi
     os.environ['SSL_CERT_FILE'] = certifi.where()
@@ -130,9 +141,7 @@ def prepare(args):
             meta['audio'] = str(wav)
             if not wav.exists():
                 partial = wav.with_name('transcription-audio.partial.wav')
-                subprocess.run([ff, '-nostdin', '-v', 'error', '-y', '-i', meta['media'],
-                                '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le',
-                                str(partial)], check=True)
+                extract_audio(ff,Path(meta['media']),partial)
                 partial.replace(wav)
             with wave.open(str(wav)) as audio:
                 duration = audio.getnframes() / audio.getframerate()
