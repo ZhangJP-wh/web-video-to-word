@@ -1,23 +1,37 @@
 {
-  "date": "2026-10-07",
-  "source_files": 26,
+  "date": "2026-10-08",
+  "source_files": 29,
   "source_sha256_verified": true,
   "markdown_source_roundtrip": true,
   "word_full_source_roundtrip": true,
   "unit_tests": {
-    "passed": 48,
-    "environment": "existing Apple M2 macOS Python 3.12 environment; ASR mocked"
+    "passed": 60,
+    "environment": "existing Apple Silicon macOS, Python 3.12; ASR mocked"
   },
+  "pip_check": true,
   "python_compile": true,
   "launcher_zsh_syntax": true,
+  "bootstrap_bash_syntax": true,
+  "installer_smoke": {
+    "fresh_project_venv": true,
+    "node": "existing native Node.js 24 from agent runtime supplied in PATH",
+    "chromium_download_and_launch": true,
+    "service_health": true,
+    "same_project_reuse": true,
+    "port": 18767
+  },
   "new_machine_install_tested": false,
-  "real_model_redownloaded_for_guide": false,
+  "homebrew_install_branch_tested": false,
+  "official_pkg_install_tested": false,
+  "qianwen_cloud_login_tested": false,
+  "local_asr_added": false,
   "excludes": [
     "personal jobs",
     "transcripts",
     "media",
     "cookies",
     ".venv",
+    "logs",
     "model caches"
   ]
 }

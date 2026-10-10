@@ -23,17 +23,41 @@
 
 ## 新电脑安装
 
-仅在 Apple 芯片 Mac / Python 3.12 环境验证。Windows、Intel Mac 暂未验证。
+优先支持原生 Apple Silicon Mac、Python 3.12、arm64 Node.js 22+。Windows、Intel Mac 和 Rosetta 终端不支持本安装入口。首次下载需要网络；尚未在另一台全新 Mac 完成从零安装实测。
 
-1. 在本仓库点击绿色 **Code → Download ZIP**，解压到固定位置，不要只运行压缩包内的文件。
-2. 安装 [Python 3.12](https://www.python.org/downloads/release/python-31210/) 的 macOS universal2 安装包。安装后运行 Applications/Python 3.12/Install Certificates.command。
-3. 安装 [Node.js](https://nodejs.org/en/download) 22 或更高 LTS 的 macOS 安装包。
-4. 双击“首次安装.command”。下载 Python 依赖及 Chromium 浏览器，首次需要网络。
-5. 双击“配置千问登录.command”登录，然后启动工具。
-6. 如 macOS 阻止打开 command 文件，在 Finder 右键打开；仅对自己信任的源码操作，不关闭系统安全保护。
-7. 可双击“启用自动启动.command”，实现登录 Mac 后启动、服务停止后自动重启。恢复未完成任务可能重新处理部分步骤。
+### 交给 AI Agent（推荐）
 
-更新时停止服务，备份 work 中的任务记录与浏览器登录资料，替换源码和重新安装 requirements 后启动；不要用别人的登录资料覆盖自己的。朋友电脑不会因 GitHub 更新自动升级。
+复制以下整段给具备本机终端/文件权限的 AI Agent：
+
+> 请帮我安装 https://github.com/ZhangJP-wh/web-video-to-word 到固定的本机目录。先阅读 README.md、INSTALL_GUIDE.md 和安装源码，再运行 `bash install.sh --open`。完成环境、依赖、Chromium、全部测试、pip check、服务启动和 /health 验收；确认 project 是安装目录且 engines 仅为 qianwen。环境缺失时按安装器提示从官方来源安装。系统密码/授权、千问登录和验证码交给我本人操作。不要关闭系统安全或 TLS 校验，不读取日常浏览器 Cookie，不安装本地 ASR，不上传凭据、日志、任务或文稿。失败时保留具体错误，修复后重跑入口。
+
+### 自己安装
+
+1. 点击 **Code → Download ZIP**，解压到固定位置。不要从压缩包内部运行，也不要在安装后移动目录。
+2. 双击“首次安装.command”（同 `bash install.sh --open`）。若 Gatekeeper 阻止，在 Finder 对信任的文件右键打开并遵循系统提示，不关闭系统安全保护。
+3. 安装器自动检查 macOS/arm64、Python 3.12、Node.js 22+；若已有 `/opt/homebrew/bin/brew`，使用它安装缺失环境，不使用 sudo。Homebrew 自身报错时按其输出处理，再重跑入口。
+4. 没有 Homebrew 且缺环境时，安装器一次给出一个明确的“下一步”：安装官方 Python 3.12 macOS universal2 包，或 Node.js 22+ LTS macOS ARM64 包，然后重跑。必要的安装包系统授权由本人完成，不自动安装 Homebrew。
+5. 验收完成后网页会打开。点击“登录或打开千问”，本人完成登录/验证码。健康检查只验证本机服务，不能证明千问登录有效或云端转写成功。
+
+入口依次创建/修复 `.venv`（损坏环境重命名为 `.venv.backup-*`，不删除资料）、安装 requirements、pip check、安装 Playwright Chromium、真实启动一次无登录的 Chromium、运行全部测试，再后台启动服务并等待最多30秒验证 `/health`。任何步骤失败都会停止，不报告安装成功。可重复运行；不会停止其他进程或覆盖其他副本的服务。端口占用时使用 `bash install.sh --port 8768 --open`，今后以同端口启动。
+
+常用命令：
+
+```bash
+bash install.sh                 # 安装、验收并启动，适合无交互 Agent
+bash install.sh --no-start      # 安装和验收，不启动
+bash install.sh --start-only --open  # 启动已安装工具并验证；不重新安装依赖
+```
+
+双击“启动工具.command”使用默认8767端口。自动登录 Mac 后启动仍为自选功能：双击“启用自动启动.command”，不是首次安装必需步骤。
+
+### 手动兜底和故障处理
+
+可自行安装 [Python 3.12 universal2](https://www.python.org/downloads/release/python-31210/) 和 [Node.js 22+ LTS ARM64](https://nodejs.org/en/download)，然后执行 `python3.12 install.py --open`。安装器使用 macOS 系统证书，保持 HTTPS 验证；若官方 Python 的证书未配置，可运行 Applications/Python 3.12/Install Certificates.command 后重试。已有 Node 的终端 PATH 必须能找到它；`install.sh` 自动加入常见官方及 Homebrew 路径。
+
+安装失败保留终端具体报错；网络下载中断后重跑入口。服务失败时仅在本机查看 `work/app.log`，不要公开上传可能包含任务信息的日志。损坏 venv 的备份可在确认新环境正常后由本人清理。不要删除 `work`，其中有任务和千问专用登录资料。
+
+更新前先停止当前服务（自动启动版本先运行“停用自动启动.command”），备份自己的 work 资料，再更新源码并重跑安装器；需要时重新启用自动启动。朋友电脑不会因 GitHub 更新自动升级。其他副本占用端口时，安装器拒绝复用，不强制关闭。
 
 后台启动识别进程失败会显示具体失败原因，不会一直停在排队状态；个别任务记录异常不会停止后续队列。
 
@@ -69,23 +93,18 @@
 
 当前按千问页面限制处理单文件：最长 6 小时、音频最大 500MB；超过限制会提示失败。默认选择中英文自由说、不翻译、多人讨论，其他语言需要适配。下载能力由 [yt-dlp](https://github.com/yt-dlp/yt-dlp) 决定，不保证支持所有网页，不绕过付费或 DRM，请处理有权使用的媒体。
 
-## 给 AI Agent 的安装与验收步骤
+## 安装验收与验证范围
 
-- 读取 README 和 INSTALL_GUIDE，确认 macOS arm64、Python 3.12、Node.js 22+。
-- 执行 `python3.12 install.py`。依赖只来自 requirements；不得下载本地 ASR 模型。
-- 执行 `.venv/bin/python -m unittest test_reader test_app test_qianwen test_task_controls` 和 pip check。
-- 让用户在专用浏览器中完成登录。验证码和账号密码由用户处理，不提交凭据。
-- 启动服务，检查 /health 返回 engines 为仅 qianwen。
-- 用获授权的短音频验证下载、千问原文导出、最终 Word、链接、提示、发言人、时间戳、媒体移入废纸篓。
-- 检查登录失效提示和删除按钮；测试删除只使用临时测试文件。
-- 不把任务记录、个人文稿、音视频、日志、work、.venv、Cookie 或缓存提交仓库。
+安装入口运行 `test_reader test_app test_qianwen test_task_controls test_install` 全部测试及 pip check。安装器回归覆盖错误架构/Node版本、损坏环境保留与修复、符号链接保护、依赖失败中止、错误服务身份拒绝和正确服务复用。千问单元测试使用模拟结果，不调用用户账号。
 
-## 验证说明
+需要验证云端完整流程时，由用户提供获授权的短音频，本人登录后检查千问原文、Word、来源链接、提示、发言人、时间戳及媒体清理。此项涉及用户内容，不属于安装器自动测试。不得把任务记录、个人文稿、音视频、work、.venv、Cookie 或缓存提交仓库。
 
-本次 50 项测试通过，其中云端识别返回结果在单元测试中模拟；旧本地推理断点测试已移除。此前本机20秒音频的千问后台完整流程约46秒，不能推断长视频速度或识别准确率。未在另一台全新 Mac 完成安装实测。
+本次具体验证结果见 `验证记录.json`。另一台全新 Mac、官方安装包授权和 Homebrew 缺环境安装分支仍需要独立实测，不能承诺所有新电脑无人干预安装。
 
 ## 主要文件
 
-`app.py` 网页服务；`reader.py` 下载与 Word；`qianwen_browser.py` 千问后台浏览器；`task_controls.py` 删除任务；`install.py` 安装；`requirements.txt` 依赖；`INSTALL_GUIDE.md` 含完整源码的安装指南。
+`app.py` 网页服务；`reader.py` 下载与 Word；`qianwen_browser.py` 千问后台浏览器；`task_controls.py` 删除任务；`install.sh` 统一环境入口；`install.py` 安装和健康验收；`requirements.txt` 依赖；`INSTALL_GUIDE.md` 含完整源码的安装指南。
+
+自包含安装指南由 `tools/build_guides.py` 从公开源码重建，Markdown 和 Word 同步维护。
 
 本项目采用 MIT 许可证，第三方组件遵循各自许可证。

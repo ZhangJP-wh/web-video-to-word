@@ -23,17 +23,41 @@
 
 ## 新电脑安装
 
-仅在 Apple 芯片 Mac / Python 3.12 环境验证。Windows、Intel Mac 暂未验证。
+优先支持原生 Apple Silicon Mac、Python 3.12、arm64 Node.js 22+。Windows、Intel Mac 和 Rosetta 终端不支持本安装入口。首次下载需要网络；尚未在另一台全新 Mac 完成从零安装实测。
 
-1. 在本仓库点击绿色 **Code → Download ZIP**，解压到固定位置，不要只运行压缩包内的文件。
-2. 安装 [Python 3.12](https://www.python.org/downloads/release/python-31210/) 的 macOS universal2 安装包。安装后运行 Applications/Python 3.12/Install Certificates.command。
-3. 安装 [Node.js](https://nodejs.org/en/download) 22 或更高 LTS 的 macOS 安装包。
-4. 双击“首次安装.command”。下载 Python 依赖及 Chromium 浏览器，首次需要网络。
-5. 双击“配置千问登录.command”登录，然后启动工具。
-6. 如 macOS 阻止打开 command 文件，在 Finder 右键打开；仅对自己信任的源码操作，不关闭系统安全保护。
-7. 可双击“启用自动启动.command”，实现登录 Mac 后启动、服务停止后自动重启。恢复未完成任务可能重新处理部分步骤。
+### 交给 AI Agent（推荐）
 
-更新时停止服务，备份 work 中的任务记录与浏览器登录资料，替换源码和重新安装 requirements 后启动；不要用别人的登录资料覆盖自己的。朋友电脑不会因 GitHub 更新自动升级。
+复制以下整段给具备本机终端/文件权限的 AI Agent：
+
+> 请帮我安装 https://github.com/ZhangJP-wh/web-video-to-word 到固定的本机目录。先阅读 README.md、INSTALL_GUIDE.md 和安装源码，再运行 `bash install.sh --open`。完成环境、依赖、Chromium、全部测试、pip check、服务启动和 /health 验收；确认 project 是安装目录且 engines 仅为 qianwen。环境缺失时按安装器提示从官方来源安装。系统密码/授权、千问登录和验证码交给我本人操作。不要关闭系统安全或 TLS 校验，不读取日常浏览器 Cookie，不安装本地 ASR，不上传凭据、日志、任务或文稿。失败时保留具体错误，修复后重跑入口。
+
+### 自己安装
+
+1. 点击 **Code → Download ZIP**，解压到固定位置。不要从压缩包内部运行，也不要在安装后移动目录。
+2. 双击“首次安装.command”（同 `bash install.sh --open`）。若 Gatekeeper 阻止，在 Finder 对信任的文件右键打开并遵循系统提示，不关闭系统安全保护。
+3. 安装器自动检查 macOS/arm64、Python 3.12、Node.js 22+；若已有 `/opt/homebrew/bin/brew`，使用它安装缺失环境，不使用 sudo。Homebrew 自身报错时按其输出处理，再重跑入口。
+4. 没有 Homebrew 且缺环境时，安装器一次给出一个明确的“下一步”：安装官方 Python 3.12 macOS universal2 包，或 Node.js 22+ LTS macOS ARM64 包，然后重跑。必要的安装包系统授权由本人完成，不自动安装 Homebrew。
+5. 验收完成后网页会打开。点击“登录或打开千问”，本人完成登录/验证码。健康检查只验证本机服务，不能证明千问登录有效或云端转写成功。
+
+入口依次创建/修复 `.venv`（损坏环境重命名为 `.venv.backup-*`，不删除资料）、安装 requirements、pip check、安装 Playwright Chromium、真实启动一次无登录的 Chromium、运行全部测试，再后台启动服务并等待最多30秒验证 `/health`。任何步骤失败都会停止，不报告安装成功。可重复运行；不会停止其他进程或覆盖其他副本的服务。端口占用时使用 `bash install.sh --port 8768 --open`，今后以同端口启动。
+
+常用命令：
+
+```bash
+bash install.sh                 # 安装、验收并启动，适合无交互 Agent
+bash install.sh --no-start      # 安装和验收，不启动
+bash install.sh --start-only --open  # 启动已安装工具并验证；不重新安装依赖
+```
+
+双击“启动工具.command”使用默认8767端口。自动登录 Mac 后启动仍为自选功能：双击“启用自动启动.command”，不是首次安装必需步骤。
+
+### 手动兜底和故障处理
+
+可自行安装 [Python 3.12 universal2](https://www.python.org/downloads/release/python-31210/) 和 [Node.js 22+ LTS ARM64](https://nodejs.org/en/download)，然后执行 `python3.12 install.py --open`。安装器使用 macOS 系统证书，保持 HTTPS 验证；若官方 Python 的证书未配置，可运行 Applications/Python 3.12/Install Certificates.command 后重试。已有 Node 的终端 PATH 必须能找到它；`install.sh` 自动加入常见官方及 Homebrew 路径。
+
+安装失败保留终端具体报错；网络下载中断后重跑入口。服务失败时仅在本机查看 `work/app.log`，不要公开上传可能包含任务信息的日志。损坏 venv 的备份可在确认新环境正常后由本人清理。不要删除 `work`，其中有任务和千问专用登录资料。
+
+更新前先停止当前服务（自动启动版本先运行“停用自动启动.command”），备份自己的 work 资料，再更新源码并重跑安装器；需要时重新启用自动启动。朋友电脑不会因 GitHub 更新自动升级。其他副本占用端口时，安装器拒绝复用，不强制关闭。
 
 后台启动识别进程失败会显示具体失败原因，不会一直停在排队状态；个别任务记录异常不会停止后续队列。
 
@@ -69,30 +93,41 @@
 
 当前按千问页面限制处理单文件：最长 6 小时、音频最大 500MB；超过限制会提示失败。默认选择中英文自由说、不翻译、多人讨论，其他语言需要适配。下载能力由 [yt-dlp](https://github.com/yt-dlp/yt-dlp) 决定，不保证支持所有网页，不绕过付费或 DRM，请处理有权使用的媒体。
 
-## 给 AI Agent 的安装与验收步骤
+## 安装验收与验证范围
 
-- 读取 README 和 INSTALL_GUIDE，确认 macOS arm64、Python 3.12、Node.js 22+。
-- 执行 `python3.12 install.py`。依赖只来自 requirements；不得下载本地 ASR 模型。
-- 执行 `.venv/bin/python -m unittest test_reader test_app test_qianwen test_task_controls` 和 pip check。
-- 让用户在专用浏览器中完成登录。验证码和账号密码由用户处理，不提交凭据。
-- 启动服务，检查 /health 返回 engines 为仅 qianwen。
-- 用获授权的短音频验证下载、千问原文导出、最终 Word、链接、提示、发言人、时间戳、媒体移入废纸篓。
-- 检查登录失效提示和删除按钮；测试删除只使用临时测试文件。
-- 不把任务记录、个人文稿、音视频、日志、work、.venv、Cookie 或缓存提交仓库。
+安装入口运行 `test_reader test_app test_qianwen test_task_controls test_install` 全部测试及 pip check。安装器回归覆盖错误架构/Node版本、损坏环境保留与修复、符号链接保护、依赖失败中止、错误服务身份拒绝和正确服务复用。千问单元测试使用模拟结果，不调用用户账号。
 
-## 验证说明
+需要验证云端完整流程时，由用户提供获授权的短音频，本人登录后检查千问原文、Word、来源链接、提示、发言人、时间戳及媒体清理。此项涉及用户内容，不属于安装器自动测试。不得把任务记录、个人文稿、音视频、work、.venv、Cookie 或缓存提交仓库。
 
-本次 50 项测试通过，其中云端识别返回结果在单元测试中模拟；旧本地推理断点测试已移除。此前本机20秒音频的千问后台完整流程约46秒，不能推断长视频速度或识别准确率。未在另一台全新 Mac 完成安装实测。
+本次具体验证结果见 `验证记录.json`。另一台全新 Mac、官方安装包授权和 Homebrew 缺环境安装分支仍需要独立实测，不能承诺所有新电脑无人干预安装。
 
 ## 主要文件
 
-`app.py` 网页服务；`reader.py` 下载与 Word；`qianwen_browser.py` 千问后台浏览器；`task_controls.py` 删除任务；`install.py` 安装；`requirements.txt` 依赖；`INSTALL_GUIDE.md` 含完整源码的安装指南。
+`app.py` 网页服务；`reader.py` 下载与 Word；`qianwen_browser.py` 千问后台浏览器；`task_controls.py` 删除任务；`install.sh` 统一环境入口；`install.py` 安装和健康验收；`requirements.txt` 依赖；`INSTALL_GUIDE.md` 含完整源码的安装指南。
+
+自包含安装指南由 `tools/build_guides.py` 从公开源码重建，Markdown 和 Word 同步维护。
 
 本项目采用 MIT 许可证，第三方组件遵循各自许可证。
 
 ## 仅收到本文档：完整源码
 
-AI Agent 可按 FILE 标记逐个提取文件，核对文件校验.json 后执行安装。保存 command 文件后运行 chmod +x *.command。切换旧版本仅需双击“切换千问并清理本地模型.command”，完成后刷新网页。该迁移会保留文稿和任务，永久清除本工具模型缓存与旧推理依赖。
+AI Agent 可按 FILE 标记逐个提取文件，再核对文件校验.json；运行 `bash install.sh`。仅提取这里列出的公开源码，不迁移他人的登录资料。
+
+### FILE: .gitignore
+```text
+.venv/
+work/
+outputs/
+__pycache__/
+*.pyc
+.DS_Store
+.env
+.env.*
+*cookie*
+*.log
+
+.venv.backup-*/
+```
 
 ### FILE: app.py
 ```text
@@ -504,7 +539,6 @@ if __name__ == '__main__':
     threading.Thread(target=worker, daemon=True).start()
     print(f'网页视频转语音识别文字稿（由千问提供支持）：http://{HOST}:{PORT}', flush=True)
     server.serve_forever()
-
 ```
 
 ### FILE: check_recovery.py
@@ -571,7 +605,6 @@ def run(port):
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('--port',type=int,default=8767)
     run(parser.parse_args().port)
-
 ```
 
 ### FILE: cloud_migration.py
@@ -631,7 +664,6 @@ def main():
     save_json(WORK/'cloud-migration.json',{'ok':True,'removed_model_cache_bytes':size,'output':str(OUTPUT)})
     print('已移除本地模型及推理组件，文稿文件夹已更新。')
 if __name__=='__main__':main()
-
 ```
 
 ### FILE: index.html
@@ -675,36 +707,207 @@ function link(text,url,style){let a=document.createElement('a');a.textContent=te
 async function refresh(){const sequence=++refreshSequence;try{let jobs=await(await fetch('/jobs')).json();if(sequence!==refreshSequence)return;jobs=jobs.filter(j=>!deletedTaskIds.has(j.id));jobs.sort((a,b)=>(b.created_at??historicalTaskTimes[b.id]??b.added_at??Infinity)-(a.created_at??historicalTaskTimes[a.id]??a.added_at??Infinity));let host=document.querySelector('#jobs');host.replaceChildren();for(let j of jobs){let card=document.createElement('article');card.dataset.taskId=j.id;let h=document.createElement('h2');h.textContent=taskHeading(j);card.append(h);let p=document.createElement('p');p.textContent=(j.document&&!j.has_document)?'Word 文件已不在原保存位置，重新提交链接可生成':(stages[j.state]||'状态暂未识别：'+String(j.state));card.append(p);if(j.source_kind==='local'){let source=document.createElement('p');source.textContent=j.source_label;card.append(source)}else card.append(link('原网页',j.url));let deletion=deletionResults.get(j.id)||j.deletion_result;if(deletion){let status=document.createElement('p');status.className='delete-result';status.setAttribute('role','alert');status.style.color=deletion.status==='failed'?'#a52222':'#8b4520';renderDeletionResult(status,deletion);card.append(status)}if(j.error){let err=document.createElement('p');err.textContent=j.error;card.append(err)}if(j.cleanup_error){let note=document.createElement('p');note.textContent='Word 已生成，但部分临时文件未清理：'+j.cleanup_error;card.append(note)}if(j.has_document){let actions=document.createElement('p');actions.className='actions';actions.append(link('查看 Word 文稿','/preview/'+j.id,'action'));let reveal=document.createElement('button');reveal.type='button';reveal.className='secondary';reveal.textContent='打开文档所在位置';let revealStatus=document.createElement('small');revealStatus.setAttribute('role','status');reveal.onclick=async()=>{reveal.disabled=true;revealStatus.textContent='正在打开文件夹…';try{await post('/reveal/'+j.id,{});revealStatus.textContent='已打开 Finder 文件夹。';msg.textContent='已打开文档所在的 Finder 文件夹。'}catch(e){revealStatus.textContent='打开失败：'+e.message;msg.textContent='打开失败：'+e.message}finally{reveal.disabled=false}};actions.append(reveal);actions.append(revealStatus);card.append(actions);let note=document.createElement('small');note.textContent=j.temporary_files_removed?(j.media_trashed?'原音视频已移入废纸篓，临时音轨已清理。':'原音视频与临时音轨已清理。'):'Word 内容未经人工校对。';card.append(note)}let controls=document.createElement('p');controls.className='actions';if(j.state==='failed'||j.state==='login_required'){let retry=document.createElement('button');retry.textContent='重试任务';retry.onclick=async()=>{try{await post('/jobs',{url:j.url,engine:'qianwen'});await refresh()}catch(e){msg.textContent=e.message}};controls.append(retry)}let remove=document.createElement('button');remove.type='button';remove.className='secondary';remove.style.color='#a52222';remove.textContent='删除任务并同步到千问';if(deletion?.status==='pending'){remove.disabled=true;remove.textContent='正在同步删除…'}remove.onclick=async()=>{if(!confirm('删除“'+(j.title||j.id)+'”？将停止该任务，把本机任务文件和相关文稿移入废纸篓。同时删除对应的千问云端记录，云端删除后无法恢复。'))return;deletionResults.set(j.id,{status:'pending',message:'正在删除并同步到千问，请稍候…'});msg.className='';msg.textContent='正在删除并同步到千问，请稍候…';remove.disabled=true;remove.textContent='正在同步删除…';try{let health=await(await fetch('/health')).json();if(!health.cloud_delete)throw Error('请先双击加载本次更新.command启用千问同步删除');await requireControls();let r=await post('/delete/'+j.id,{});deletedTaskIds.add(j.id);++refreshSequence;document.querySelectorAll('article[data-task-id="'+j.id+'"]').forEach(node=>node.remove());deletionResults.delete(j.id);showDeletionResult(r.deletion_result||{status:'success',message:r.message},true);await refresh()}catch(e){let message=e.deletionResult?.message||('删除失败\n工具任务列表记录：未删除成功\n本机文稿及任务文件：未确认删除成功\n对应的千问记录：未确认删除成功\n原因：'+e.message);let report=e.deletionResult||{status:'failed',message};deletionResults.set(j.id,report);showDeletionResult(report,false);let status=card.querySelector('.delete-result');if(!status){status=document.createElement('p');status.className='delete-result';status.setAttribute('role','alert');card.append(status)}status.style.color='#a52222';renderDeletionResult(status,report);remove.disabled=false;remove.textContent='删除任务并同步到千问'}};if(j.has_document){card.querySelector('.actions').append(remove)}else{controls.append(remove)}if(controls.children.length)card.append(controls);host.append(card)}await refreshLogin()}catch(e){msg.textContent='后台连接中断，请重新启动工具。'}}
 refresh();setInterval(refresh,6000);
 </script></html>
-
 ```
 
 ### FILE: install.py
 ```text
 #!/usr/bin/env python3
-import os, platform, shutil, subprocess, sys
+"""Idempotent installation and verified local startup; stdlib only at entry."""
+import argparse
+import json
+import os
+import platform
+import shutil
+import socket
+import subprocess
+import sys
+import time
+import urllib.request
 from pathlib import Path
-ROOT = Path(__file__).resolve().parent
-os.chdir(ROOT)
-if platform.system() != "Darwin" or platform.machine() != "arm64":
-    raise SystemExit("本安装版仅验证 Apple 芯片 Mac；请使用原生 arm64 终端。")
-if sys.version_info[:2] != (3, 12):
-    raise SystemExit("请先安装 Python 3.12，再运行首次安装。")
-node = shutil.which("node")
-if not node or int(subprocess.check_output([node, "--version"], text=True).strip().lstrip("v").split(".")[0]) < 22:
-    raise SystemExit("请先从 nodejs.org 安装 Node.js 22 或以上的 LTS 版本。")
-folder = ROOT / ".venv"
-if not folder.exists():
-    subprocess.run([sys.executable, "-m", "venv", str(folder)], check=True)
-python = str(folder / "bin/python")
-os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(ROOT / "work/browser-bin")
-subprocess.run([python, "-m", "pip", "install", "--upgrade", "pip"], check=True)
-subprocess.run([python, "-m", "pip", "install", "-r", "requirements.txt"], check=True)
-subprocess.run([python, "-m", "pip", "check"], check=True)
-subprocess.run([python, "-m", "unittest", "test_reader", "test_app", "-q"], check=True)
-print("正在安装千问后台浏览器，可以等待，不要关闭窗口。", flush=True)
-subprocess.run([python, "-m", "playwright", "install", "chromium"], check=True)
-print("安装完成。请双击：启动工具.command。", flush=True)
 
+ROOT = Path(__file__).resolve().parent
+TESTS = ['test_reader', 'test_app', 'test_qianwen', 'test_task_controls', 'test_install']
+
+
+def run(args, **kwargs):
+    print('执行：' + ' '.join(map(str, args)), flush=True)
+    return subprocess.run(list(map(str, args)), check=True, cwd=ROOT, **kwargs)
+
+
+def check_environment():
+    if platform.system() != 'Darwin' or platform.machine() != 'arm64':
+        raise RuntimeError('仅支持原生 macOS arm64；请退出 Rosetta 终端再重试。')
+    if sys.version_info[:2] != (3, 12):
+        raise RuntimeError('需要 Python 3.12。请运行 bash install.sh 自动检查环境。')
+    node = shutil.which('node')
+    if not node:
+        raise RuntimeError('缺少 Node.js。请运行 bash install.sh。')
+    info = json.loads(subprocess.check_output(
+        [node, '-p', 'JSON.stringify({version:process.versions.node,arch:process.arch})'], text=True))
+    if int(info['version'].split('.')[0]) < 22 or info['arch'] != 'arm64':
+        raise RuntimeError('需要原生 arm64 Node.js 22+。请运行 bash install.sh。')
+
+
+def ensure_venv():
+    folder = ROOT / '.venv'
+    python = folder / 'bin/python'
+    if folder.is_symlink():
+        raise RuntimeError('.venv 是符号链接，请先人工核查其目标；安装器不会修改。')
+    healthy = False
+    if python.exists():
+        try:
+            info = json.loads(subprocess.check_output([str(python), '-c',
+                'import sys,platform,json;print(json.dumps([list(sys.version_info[:2]),platform.machine(),sys.prefix,sys.base_prefix]))'], text=True, timeout=10))
+            healthy = info[0] == [3, 12] and info[1] == 'arm64' and Path(info[2]).resolve() == folder.resolve() and info[2] != info[3]
+        except (OSError, ValueError, subprocess.SubprocessError):
+            pass
+    if not healthy:
+        if folder.exists():
+            # Preserve rather than delete a potentially non-standard environment.
+            backup = ROOT / ('.venv.backup-' + str(time.time_ns()))
+            folder.rename(backup)
+            print(f'旧环境保留在 {backup.name}；任务和登录资料不受影响。', flush=True)
+        run([sys.executable, '-m', 'venv', folder])
+    return python
+
+
+def health(port):
+    # Bypass ambient HTTP proxies for local checks.
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(f'http://127.0.0.1:{port}/health', timeout=2) as response:
+        return json.load(response)
+
+
+def validate_health(data):
+    if not (isinstance(data, dict) and data.get('ok') is True and data.get('project') == str(ROOT) and data.get('engines') == ['qianwen']):
+        raise RuntimeError('端口上的服务不是本目录的千问工具。请关闭对应旧服务，或使用 --port 选择空闲端口；未停止任何进程。')
+
+
+def start_service(python, port):
+    try:
+        data = health(port)
+    except (OSError, ValueError):
+        data = None
+    if data is not None:
+        validate_health(data)
+        print('本目录服务已运行，健康检查通过。')
+        return
+    with socket.socket() as probe:
+        try:
+            probe.bind(('127.0.0.1', port))
+        except OSError as error:
+            raise RuntimeError(f'端口 {port} 被占用，请用 --port 选择空闲端口；未停止其他服务。') from error
+    env = os.environ.copy()
+    env['VIDEO_READER_PORT'] = str(port)
+    work = ROOT / 'work'
+    work.mkdir(exist_ok=True)
+    with (work / 'app.log').open('ab') as log:
+        child = subprocess.Popen([str(python), str(ROOT / 'app.py')], cwd=ROOT, env=env,
+            stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        if child.poll() is not None:
+            raise RuntimeError('服务启动失败，请查看本机 work/app.log（不要公开上传日志）。')
+        try:
+            data = health(port)
+        except (OSError, ValueError):
+            time.sleep(.5)
+            continue
+        try:
+            validate_health(data)
+            if data.get('pid') != child.pid:
+                raise RuntimeError('健康检查的进程与本次启动不一致，请检查端口。')
+        except RuntimeError:
+            child.terminate()
+            raise
+        print('服务启动及 /health 检查通过。')
+        return
+    child.terminate()
+    raise RuntimeError('服务健康检查超时，本次启动的进程已请求停止；请查看本机 work/app.log。')
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--no-start', action='store_true', help='只安装和验收，不启动服务')
+    parser.add_argument('--start-only', action='store_true', help='启动已安装环境并验证健康状态')
+    parser.add_argument('--port', type=int, default=8767)
+    parser.add_argument('--open', action='store_true', help='健康检查通过后打开工具网页')
+    args = parser.parse_args(argv)
+    if not 1024 <= args.port <= 65535:
+        parser.error('端口应在 1024～65535 之间')
+    if args.no_start and args.start_only:
+        parser.error('--no-start 和 --start-only 不能同时使用')
+    check_environment()
+    os.environ['PLAYWRIGHT_BROWSERS_PATH'] = str(ROOT / 'work/browser-bin')
+    # macOS system trust roots; never disable TLS verification.
+    if Path('/etc/ssl/cert.pem').is_file():
+        for key in ('PIP_CERT', 'SSL_CERT_FILE', 'NODE_EXTRA_CA_CERTS'):
+            os.environ.setdefault(key, '/etc/ssl/cert.pem')
+    if args.start_only:
+        python = ROOT / '.venv/bin/python'
+        if not python.exists():
+            raise RuntimeError('请先运行 bash install.sh 完成安装。')
+    else:
+        python = ensure_venv()
+        run([python, '-m', 'ensurepip', '--upgrade'])
+        run([python, '-m', 'pip', 'install', '--upgrade', 'pip'])
+        run([python, '-m', 'pip', 'install', '-r', ROOT / 'requirements.txt'])
+        run([python, '-m', 'pip', 'check'])
+        run([python, '-m', 'playwright', 'install', 'chromium'])
+        run([python, '-c', 'from playwright.sync_api import sync_playwright\nwith sync_playwright() as p:\n b=p.chromium.launch(); b.close()'])
+        run([python, '-m', 'unittest', *TESTS, '-q'])
+    if not args.no_start:
+        start_service(python, args.port)
+        url = f'http://127.0.0.1:{args.port}/'
+        print(f'工具地址：{url}\n请点击网页“登录或打开千问”，由本人完成账号登录/验证码。健康检查不代表已登录或云端转写成功。')
+        if args.open:
+            run(['/usr/bin/open', url])
+    else:
+        print('安装和本机验收完成。运行 bash install.sh --start-only 启动。')
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+        raise SystemExit(f'未完成：{error}\n修复上述问题后重新运行 bash install.sh；不要提交 work、日志或登录资料。')
+```
+
+### FILE: install.sh
+```text
+#!/bin/bash
+# No curl | sh, sudo, Gatekeeper changes, or access to browser credentials.
+set -euo pipefail
+trap 'echo "安装未完成（入口第 $LINENO 行）。请按上方错误处理后重新运行 bash install.sh；若 Homebrew 安装失败，可改用 README 中的官方安装包。" >&2' ERR
+cd -- "$(dirname -- "$0")"
+export PATH="/opt/homebrew/opt/python@3.12/bin:/opt/homebrew/opt/node@22/bin:/opt/homebrew/bin:/Library/Frameworks/Python.framework/Versions/3.12/bin:/usr/local/bin:$PATH"
+if [[ "$(uname -s)" != Darwin || "$(uname -m)" != arm64 ]]; then
+  echo '仅支持原生 Apple Silicon Mac。若正在用 Rosetta，请在终端的“显示简介”取消“使用 Rosetta 打开”后重试。' >&2
+  exit 1
+fi
+python_ok() {
+  command -v python3.12 >/dev/null && python3.12 -c 'import sys,platform;sys.exit(not (sys.version_info[:2]==(3,12) and platform.machine()=="arm64"))'
+}
+node_ok() {
+  command -v node >/dev/null && node -e 'process.exit(process.arch === "arm64" && Number(process.versions.node.split(".")[0]) >= 22 ? 0 : 1)'
+}
+if ! python_ok || ! node_ok; then
+  if [[ -x /opt/homebrew/bin/brew ]]; then
+    echo '使用已有的 Apple Silicon Homebrew 安装缺失环境（不使用 sudo）。'
+    if ! python_ok; then /opt/homebrew/bin/brew install python@3.12; fi
+    if ! node_ok; then /opt/homebrew/bin/brew install node@22; fi
+    hash -r
+  fi
+fi
+if ! python_ok; then
+  echo '下一步：打开 https://www.python.org/downloads/release/python-31210/ ，安装 macOS universal2 安装包，然后重新运行 bash install.sh。系统密码由你本人输入。' >&2
+  exit 1
+fi
+if ! node_ok; then
+  echo '下一步：打开 https://nodejs.org/en/download ，安装 Node.js 22 或以上 LTS 的 macOS ARM64 安装包，然后重新运行 bash install.sh。系统密码由你本人输入。' >&2
+  exit 1
+fi
+exec python3.12 install.py "$@"
 ```
 
 ### FILE: launch_service.py
@@ -842,7 +1045,6 @@ if __name__ == '__main__':
         main()
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
         raise SystemExit(f'未完成：{error}。若系统限制操作，请从 Finder 双击自动启动设置文件。')
-
 ```
 
 ### FILE: qianwen_browser.py
@@ -1167,7 +1369,6 @@ if __name__ == '__main__':
         if not args.job or not re.fullmatch('[0-9a-f]{12}',args.job):parser.error('任务编号不合法')
         delete_cloud(ROOT/'work/jobs'/args.job)
     else:login(ui=args.command=='login-ui')
-
 ```
 
 ### FILE: reader.py
@@ -1533,7 +1734,6 @@ def main():
 
 if __name__ == '__main__':
     main()
-
 ```
 
 ### FILE: requirements.txt
@@ -1545,7 +1745,6 @@ send2trash
 ds-store
 playwright
 certifi
-
 ```
 
 ### FILE: smoke_qianwen.py
@@ -1609,7 +1808,6 @@ def main():
 
 
 if __name__=='__main__':raise SystemExit(main())
-
 ```
 
 ### FILE: smoke_qianwen_runner.py
@@ -1631,7 +1829,6 @@ while time.monotonic()<end:
         subprocess.run([sys.executable,str(ROOT/'smoke_qianwen.py')])
         print('测试结果已保存。保留此窗口即可，接下来十分钟内可后台重试；按Ctrl+C结束。',flush=True)
     time.sleep(1)
-
 ```
 
 ### FILE: task_controls.py
@@ -1724,7 +1921,6 @@ def trash_task(root, work, output_roots, ident):
             if legacy.is_dir() and not legacy.is_symlink():send2trash(str(legacy.resolve()))
         send2trash(str(folder.resolve()))
     return {'ok':True,'message':'本机任务与相关文件已移入废纸篓。千问云端记录需在千问网页中管理。'}
-
 ```
 
 ### FILE: test_app.py
@@ -1924,7 +2120,94 @@ class SynchronizedDeleteTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+```
 
+### FILE: test_install.py
+```text
+"""Installer safety and recovery regressions; no network/login in unit tests."""
+import json
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+import install
+
+
+class InstallerTests(unittest.TestCase):
+    def test_platform_rejected_before_commands(self):
+        with patch.object(install.platform, 'system', return_value='Linux'), patch.object(install, 'run') as run:
+            with self.assertRaisesRegex(RuntimeError, 'macOS'):
+                install.main([])
+            run.assert_not_called()
+
+    def test_wrong_node_version_or_arch_rejected(self):
+        for version, arch in [('20.0.0', 'arm64'), ('22.0.0', 'x64')]:
+            with self.subTest(version=version, arch=arch), patch.object(install.platform, 'system', return_value='Darwin'), patch.object(install.platform, 'machine', return_value='arm64'), patch.object(install.sys, 'version_info', (3,12)), patch.object(install.shutil, 'which', return_value='/node'), patch.object(install.subprocess, 'check_output', return_value=json.dumps(dict(version=version, arch=arch))):
+                with self.assertRaisesRegex(RuntimeError, 'Node.js 22'):
+                    install.check_environment()
+
+    def test_broken_venv_preserved_and_rebuilt(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(install, 'ROOT', Path(tmp)), patch.object(install, 'run') as run:
+            folder = Path(tmp) / '.venv'
+            folder.mkdir()
+            (folder / 'marker').write_text('preserve')
+            install.ensure_venv()
+            backups = list(Path(tmp).glob('.venv.backup-*'))
+            self.assertEqual(len(backups), 1)
+            self.assertEqual((backups[0] / 'marker').read_text(), 'preserve')
+            self.assertEqual(run.call_args.args[0][-2:], ['venv', folder])
+
+    def test_healthy_venv_reused(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(install, 'ROOT', Path(tmp)), patch.object(install, 'run') as run:
+            python = Path(tmp) / '.venv/bin/python'
+            python.parent.mkdir(parents=True)
+            python.touch()
+            info = [[3,12], 'arm64', str(Path(tmp)/'.venv'), '/base']
+            with patch.object(install.subprocess, 'check_output', return_value=json.dumps(info)):
+                self.assertEqual(install.ensure_venv(), python)
+            run.assert_not_called()
+
+    def test_symlink_environment_not_modified(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(install, 'ROOT', Path(tmp)), patch.object(install, 'run') as run:
+            (Path(tmp)/'.venv').symlink_to(Path(tmp)/'other')
+            with self.assertRaisesRegex(RuntimeError, '符号链接'):
+                install.ensure_venv()
+            run.assert_not_called()
+
+    def test_foreign_service_never_started_or_stopped(self):
+        with patch.object(install, 'health', return_value={'ok':True,'project':'/other','engines':['qianwen']}), patch.object(install.subprocess, 'Popen') as popen:
+            with self.assertRaisesRegex(RuntimeError, '不是本目录'):
+                install.start_service(Path('/python'), 8767)
+            popen.assert_not_called()
+
+    def test_same_service_reused(self):
+        with patch.object(install, 'health', return_value={'ok':True,'project':str(install.ROOT),'engines':['qianwen']}), patch.object(install.subprocess, 'Popen') as popen:
+            install.start_service(Path('/python'), 8767)
+            popen.assert_not_called()
+
+    def test_health_requires_cloud_only(self):
+        for data in ([], {'ok':False,'project':str(install.ROOT),'engines':['qianwen']}, {'ok':True,'project':str(install.ROOT),'engines':['local']}):
+            with self.assertRaises(RuntimeError):
+                install.validate_health(data)
+
+    def test_failed_dependency_stops_before_start(self):
+        with patch.object(install, 'check_environment'), patch.object(install, 'ensure_venv', return_value=Path('/python')), patch.object(install, 'run', side_effect=subprocess.CalledProcessError(1, 'pip')), patch.object(install, 'start_service') as start:
+            with self.assertRaises(subprocess.CalledProcessError):
+                install.main([])
+            start.assert_not_called()
+
+    def test_no_start_runs_all_acceptance_steps(self):
+        with patch.object(install, 'check_environment'), patch.object(install, 'ensure_venv', return_value=Path('/python')), patch.object(install, 'run') as run, patch.object(install, 'start_service') as start:
+            install.main(['--no-start'])
+            commands = [list(map(str,c.args[0])) for c in run.call_args_list]
+            self.assertTrue(any(c[1:]==['-m','pip','check'] for c in commands))
+            self.assertTrue(any(c[1:]==['-m','playwright','install','chromium'] for c in commands))
+            self.assertTrue(any('unittest' in c and all(t in c for t in install.TESTS) for c in commands))
+            start.assert_not_called()
+
+if __name__ == '__main__':
+    unittest.main()
 ```
 
 ### FILE: test_qianwen.py
@@ -2129,7 +2412,6 @@ class CloudDeleteSafetyTests(unittest.TestCase):
         self.assertFalse(meta.get('qianwen_cloud_deleted',False))
 
 if __name__=='__main__':unittest.main()
-
 ```
 
 ### FILE: test_reader.py
@@ -2292,7 +2574,6 @@ class DownloadLinkTests(unittest.TestCase):
     def test_invalid_douyin_id_is_untouched(self):
         source='https://www.douyin.com/jingxuan?modal_id=invalid'
         self.assertEqual(reader.download_url(source),source)
-
 ```
 
 ### FILE: test_task_controls.py
@@ -2372,7 +2653,42 @@ class TaskControlTests(unittest.TestCase):
             page.get_by_role.assert_any_call('button',name=name,exact=True)
 
 if __name__=='__main__':unittest.main()
+```
 
+### FILE: tools/build_guides.py
+```text
+"""Rebuild public self-contained guides from tracked source; never read work/."""
+import hashlib
+import json
+import subprocess
+from pathlib import Path
+from docx import Document
+
+ROOT = Path(__file__).resolve().parents[1]
+files = sorted(subprocess.check_output(['git','ls-files','-z'], cwd=ROOT).decode().split('\0')[:-1])
+files = sorted(set(files + ['install.sh', 'test_install.py', 'tools/build_guides.py']))
+files = [f for f in files if f.endswith(('.py','.sh','.command','.html')) or f in ('requirements.txt','.gitignore')]
+checks = {f:hashlib.sha256((ROOT/f).read_bytes()).hexdigest() for f in files}
+(ROOT/'文件校验.json').write_text(json.dumps(checks,ensure_ascii=False,indent=2)+'\n')
+text = (ROOT/'README.md').read_text() + '\n## 仅收到本文档：完整源码\n\nAI Agent 可按 FILE 标记逐个提取文件，再核对文件校验.json；运行 `bash install.sh`。仅提取这里列出的公开源码，不迁移他人的登录资料。\n\n'
+for f in files + ['文件校验.json']:
+    text += f'### FILE: {f}\n```text\n' + (ROOT/f).read_text().rstrip() + '\n```\n\n'
+(ROOT/'INSTALL_GUIDE.md').write_text(text)
+doc = Document()
+in_code = False
+for line in text.splitlines():
+    if line == '```text':
+        in_code = True
+        doc.add_paragraph(line)
+    elif line == '```' and in_code:
+        in_code = False
+        doc.add_paragraph(line)
+    elif not in_code and line.startswith('# '): doc.add_heading(line[2:],level=0)
+    elif not in_code and line.startswith('## '): doc.add_heading(line[3:],level=1)
+    elif not in_code and line.startswith('### '): doc.add_heading(line[4:],level=2)
+    else: doc.add_paragraph(line)
+doc.save(ROOT/'安装与使用指南.docx')
+print(f'Rebuilt guides with {len(files)} public source files.')
 ```
 
 ### FILE: 停用自动启动.command
@@ -2383,7 +2699,6 @@ cd "${0:A:h}" || exit 1
 result=$?
 read 'reply?按回车关闭窗口。'
 exit $result
-
 ```
 
 ### FILE: 切换千问并清理本地模型.command
@@ -2404,7 +2719,6 @@ else
  print '已完成千问专用版切换。刷新工具页面即可。'
 fi
 read '?按回车关闭窗口。'
-
 ```
 
 ### FILE: 加载本次更新.command
@@ -2428,24 +2742,16 @@ PY
 result=$?
 read '?按回车关闭窗口。'
 exit "$result"
-
 ```
 
 ### FILE: 启动工具.command
 ```text
 #!/bin/zsh
 cd "${0:A:h}" || exit 1
-export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
-if [[ ! -x .venv/bin/python ]]; then print '请先运行 首次安装.command'; read 'reply?按回车退出。'; exit 1; fi
-mkdir -p work
-if curl --silent --fail --max-time 2 http://127.0.0.1:8767/jobs >/dev/null; then
-  print '端口 8767 已有服务，请先确认浏览器中的页面确实是本工具。'
-else
-  nohup .venv/bin/python app.py >> work/app.log 2>&1 < /dev/null &
-  print '已请求后台启动；请稍后打开 http://127.0.0.1:8767'
-fi
-print '确认页面能打开后，这个终端窗口可以关闭。'
-
+/bin/bash install.sh --start-only --open
+result=$?
+if (( result != 0 )); then read 'reply?请按上方提示处理；按回车关闭窗口。'; fi
+exit $result
 ```
 
 ### FILE: 启用自动启动.command
@@ -2456,39 +2762,6 @@ cd "${0:A:h}" || exit 1
 result=$?
 read 'reply?按回车关闭窗口。'
 exit $result
-
-```
-
-### FILE: 文件校验.json
-```text
-{
-  "test_reader.py": "dcbf181640b381f6d7ab81497b5fc8779ea88ae203dfb4181eb00861aaf044f5",
-  "qianwen_browser.py": "3cbbce123639ac83a41b286b9ad75011d41f503d5a00a87ee987fe790205b57f",
-  "测试千问后台流程.command": "365ea7c455b38238341c79e3f2db6531de8053c34a909c4a210a19248a680c8c",
-  "smoke_qianwen.py": "5a41ae58b74a8f2edaaadeb36c60235646989c5bdb2aa49e17d72dfd8778f71e",
-  "index.html": "6dd9e443ec67aed7db67deeaec104d47a4306608018c1e71e02dd4de2d5590b2",
-  "停用自动启动.command": "0c2353cd41fd56b737864d09d6fe83f8b7d62cc1c51757e86fe0bc6bbd76b682",
-  "launch_service.py": "2cadb70ee153b678af24a6eb9e911d7e6e2ae4906ca8d3115ff8bb723d516dba",
-  "requirements.txt": "8f1f858b32310780d785ef1d196205c8c85a0c44efbb9fe4124bf7e98c9a96d3",
-  "启动工具.command": "f67940511e7be84f96ef4eadc60dee14b08668d185f06f94cd03a02ebd3d59ca",
-  "首次安装.command": "3386934c6c62f0983f9d9ee8541bf0d73a4fa671be319201efa649bf71c28d32",
-  "task_controls.py": "a420be2ff8a6b4fc833d126f235e8a249c521e2a8c30435b36ebdf7426579084",
-  "test_task_controls.py": "2a0d1da5b7de5a52a5d3c0257dd989341bccf00ba3cda5fd57fe98db25842644",
-  "reader.py": "e352d9bc677f1547781028ce6df00266095c713fc91787fa4a9676cb6f3d0e21",
-  "切换千问并清理本地模型.command": "39ae5c718d5854f9fec85e13cd2c6fc683cb3c07844dffdd29697f97cfeeaaf4",
-  "smoke_qianwen_runner.py": "10c6047ad2b7ae20cac3945b41f8afdc047975fd2da3ef0dc576f3753a512409",
-  "cloud_migration.py": "cc5c02b953f404a280f0230e836ff9a5fe04f3e7002361ef9b8b8cdc244c07a0",
-  "自动恢复测试.command": "e5f7e855d99cd648d6ae2e1382da651e8afb7597f184e08d1661d6daef5cc7f6",
-  "app.py": "42334fb8c21c2b74196f6377bd67516af9c5bb5b1a8541128d8592b3882f4391",
-  "加载本次更新.command": "ceabb97ebf2b3d7df5568844de02733bc9e09f9c877621985bdaf801a182b978",
-  "配置千问登录.command": "3bc9b14516ab4c169b0cd7a9c595778965167f7f7ce533eab5ad7b3abd835fac",
-  "install.py": "837ca16dea4cc1b6c258f5effb2eea8953577857a00a4b9b927624aff8a146e8",
-  "test_qianwen.py": "9fb2902cabfbb02f36b5ce3bed5c96205ba05b6b390833cae97e10ecafd78473",
-  "check_recovery.py": "7fb929eabc113b13551764fe57caa4f72e7f37f6cded04a75c590fe54e1a3d2d",
-  "启用自动启动.command": "3475ec88b5c035f49adc0a13b3a14a09255ca19aa600a750051f6a8f1d8a07b6",
-  "test_app.py": "e850e10b4e8414ef683b73076e73d10e39b5837125edfd82f97af9a8cbb781ab"
-}
-
 ```
 
 ### FILE: 测试千问后台流程.command
@@ -2501,7 +2774,6 @@ export NODE_EXTRA_CA_CERTS=/etc/ssl/cert.pem
 result=$?
 read '?测试结束，按回车关闭窗口。'
 exit "$result"
-
 ```
 
 ### FILE: 自动恢复测试.command
@@ -2512,7 +2784,6 @@ cd "${0:A:h}" || exit 1
 result=$?
 read 'reply?按回车关闭窗口。'
 exit $result
-
 ```
 
 ### FILE: 配置千问登录.command
@@ -2529,23 +2800,51 @@ export PLAYWRIGHT_BROWSERS_PATH="$PWD/work/browser-bin"
 /bin/launchctl kill SIGTERM "gui/$(id -u)/com.zhangjp.web-video-to-word" 2>/dev/null || true
 echo "登录配置完成。如已启用自动启动，服务将自动加载新版。"
 read '?按回车关闭窗口。'
-
 ```
 
 ### FILE: 首次安装.command
 ```text
 #!/bin/zsh
 cd "${0:A:h}" || exit 1
-export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
-if ! command -v python3.12 >/dev/null 2>&1; then
-  print '请先安装 Python 3.12： https://www.python.org/downloads/macos/'
-  read 'reply?按回车退出。'; exit 1
-fi
-python3.12 install.py
+/bin/bash install.sh --open
 result=$?
-if (( result != 0 )); then print '安装未完成，请保留报错文字供 AI 排查。'; fi
+if (( result != 0 )); then print '安装未完成，请按上方“下一步”操作后重试。'; fi
 read 'reply?按回车关闭窗口。'
 exit $result
+```
 
+### FILE: 文件校验.json
+```text
+{
+  ".gitignore": "3e1cfc92af2c00c9dede00b674647a334c4cd068d8d8d743780802025013e291",
+  "app.py": "42334fb8c21c2b74196f6377bd67516af9c5bb5b1a8541128d8592b3882f4391",
+  "check_recovery.py": "7fb929eabc113b13551764fe57caa4f72e7f37f6cded04a75c590fe54e1a3d2d",
+  "cloud_migration.py": "cc5c02b953f404a280f0230e836ff9a5fe04f3e7002361ef9b8b8cdc244c07a0",
+  "index.html": "6dd9e443ec67aed7db67deeaec104d47a4306608018c1e71e02dd4de2d5590b2",
+  "install.py": "1cf3ca1fd4411f010dfe38a742e3454174a4709900cfb4984639138c1f973394",
+  "install.sh": "abead2c9d17bc14579905cab745be4220776c7d954a96042028c7b4855164826",
+  "launch_service.py": "2cadb70ee153b678af24a6eb9e911d7e6e2ae4906ca8d3115ff8bb723d516dba",
+  "qianwen_browser.py": "3cbbce123639ac83a41b286b9ad75011d41f503d5a00a87ee987fe790205b57f",
+  "reader.py": "e352d9bc677f1547781028ce6df00266095c713fc91787fa4a9676cb6f3d0e21",
+  "requirements.txt": "8f1f858b32310780d785ef1d196205c8c85a0c44efbb9fe4124bf7e98c9a96d3",
+  "smoke_qianwen.py": "5a41ae58b74a8f2edaaadeb36c60235646989c5bdb2aa49e17d72dfd8778f71e",
+  "smoke_qianwen_runner.py": "10c6047ad2b7ae20cac3945b41f8afdc047975fd2da3ef0dc576f3753a512409",
+  "task_controls.py": "a420be2ff8a6b4fc833d126f235e8a249c521e2a8c30435b36ebdf7426579084",
+  "test_app.py": "e850e10b4e8414ef683b73076e73d10e39b5837125edfd82f97af9a8cbb781ab",
+  "test_install.py": "64ae30ed3cabd6c08a737e1f2a2c8279321ad35f11c4bcbf1f7e662e21bec421",
+  "test_qianwen.py": "9fb2902cabfbb02f36b5ce3bed5c96205ba05b6b390833cae97e10ecafd78473",
+  "test_reader.py": "dcbf181640b381f6d7ab81497b5fc8779ea88ae203dfb4181eb00861aaf044f5",
+  "test_task_controls.py": "2a0d1da5b7de5a52a5d3c0257dd989341bccf00ba3cda5fd57fe98db25842644",
+  "tools/build_guides.py": "b50507babc3dd6c0859a421ea0ce2401cad4af3934e2ca37c214e883a7271508",
+  "停用自动启动.command": "0c2353cd41fd56b737864d09d6fe83f8b7d62cc1c51757e86fe0bc6bbd76b682",
+  "切换千问并清理本地模型.command": "39ae5c718d5854f9fec85e13cd2c6fc683cb3c07844dffdd29697f97cfeeaaf4",
+  "加载本次更新.command": "ceabb97ebf2b3d7df5568844de02733bc9e09f9c877621985bdaf801a182b978",
+  "启动工具.command": "d04ece1eecd95cc76065918bac7b07bc9d6cd9988e853fc93a15bb185602e218",
+  "启用自动启动.command": "3475ec88b5c035f49adc0a13b3a14a09255ca19aa600a750051f6a8f1d8a07b6",
+  "测试千问后台流程.command": "365ea7c455b38238341c79e3f2db6531de8053c34a909c4a210a19248a680c8c",
+  "自动恢复测试.command": "e5f7e855d99cd648d6ae2e1382da651e8afb7597f184e08d1661d6daef5cc7f6",
+  "配置千问登录.command": "3bc9b14516ab4c169b0cd7a9c595778965167f7f7ce533eab5ad7b3abd835fac",
+  "首次安装.command": "79eb3d678dd13a8115cfba58933713a6557929264a79b7e5143ee65c35987fb0"
+}
 ```
 
