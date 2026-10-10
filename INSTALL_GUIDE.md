@@ -6,7 +6,7 @@
 
 1. 首次安装后，双击“配置千问登录.command”，在专用窗口登录千问，返回终端按回车。
 2. 双击“启动工具.command”，打开终端给出的本机网页地址。公开安装版默认为 http://127.0.0.1:8767/。
-3. 粘贴 YouTube、哔哩哔哩等视频页面链接，点击蓝色“开始生成文稿”。
+3. 粘贴 YouTube、哔哩哔哩等视频页面链接，点击橙色“开始生成文稿”。
 4. 稍后回来查看文稿，或点击“打开文档所在位置”。任务记录最新的排在最上面。
 
 每份 Word 第一行保留原视频网页链接，按视频标题命名，包含全部识别原文、时间戳和发言人信息。显著提示：
@@ -515,7 +515,7 @@ if __name__=='__main__':main()
 <title>网页视频转语音识别文字稿（由千问提供支持）</title>
 <style>
 body{font:16px/1.7 -apple-system,BlinkMacSystemFont,sans-serif;color:#24322d;background:#f4f6f3;max-width:920px;margin:48px auto;padding:0 24px}h1{font-size:32px}input,button,.action{font:inherit;padding:10px 14px;border:1px solid #c6d1ca;border-radius:8px}input[type=url]{flex:1;min-width:180px}button,.action{background:#245441;color:white;cursor:pointer;text-decoration:none;display:inline-block}form,.actions{display:flex;gap:12px;flex-wrap:wrap}article{background:white;padding:24px;border:1px solid #e0e7e1;border-radius:12px;margin:20px 0}small{color:#62736b}a{color:#245441}#message{color:#8b4520}.notice{background:#fff3cd;color:#9c0006;padding:14px 18px;border-left:4px solid #b07800;font-weight:bold}.secondary{background:white;color:#245441}
-#form button,#qianwen-login{background:#004B93;border-color:#004B93}#form button:hover,#qianwen-login:hover{background:#003B75}</style>
+#qianwen-login{background:#004B93;border-color:#004B93}#qianwen-login:hover{background:#003B75}#form button{background:#D65A00;border-color:#D65A00}#form button:hover{background:#B94D00}</style>
 <h1>网页视频转语音识别文字稿（由千问提供支持）</h1>
 <p>粘贴网页链接，后台下载并默认交给千问识别语音、区分发言人，生成带时间戳、以视频标题命名的 Word。</p>
 <form id="form"><input id="url" aria-label="音视频网页链接" type="url" required placeholder="粘贴 YouTube、哔哩哔哩等音视频网页链接"><button>开始生成文稿</button></form>
@@ -1812,7 +1812,7 @@ exit $result
   "qianwen_browser.py": "cf35a52300ba890be471dad2b81181ef2bed6203a86236d26cdbaffec62d6302",
   "测试千问后台流程.command": "365ea7c455b38238341c79e3f2db6531de8053c34a909c4a210a19248a680c8c",
   "smoke_qianwen.py": "5a41ae58b74a8f2edaaadeb36c60235646989c5bdb2aa49e17d72dfd8778f71e",
-  "index.html": "c642671e5e3d8aa535772c310368698fe77e58433118d4261cd4453769684966",
+  "index.html": "05131b2ec6b632fdfcb5da59d1fbd08a08591958b20a491857c6ba61f1ece0f2",
   "停用自动启动.command": "0c2353cd41fd56b737864d09d6fe83f8b7d62cc1c51757e86fe0bc6bbd76b682",
   "launch_service.py": "2cadb70ee153b678af24a6eb9e911d7e6e2ae4906ca8d3115ff8bb723d516dba",
   "requirements.txt": "1bef18e7e19cf30dd5dd0310e70ef0bbcc448d7632f896785981380e3f6f397b",
