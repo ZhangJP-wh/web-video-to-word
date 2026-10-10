@@ -186,6 +186,8 @@ B站下载兼容：可选播放接口仅返回访问验证凭据时，保留公�
 
 YouTube要求登录或人机验证时，会打开隔离的专用浏览器窗口。本人完成验证后关闭该窗口，工具用该窗口的会话重试一次；15分钟未完成则保留任务。不会读取日常浏览器Cookie，验证不保证YouTube允许后台下载。专用资料位于私人work目录，不应公开。
 
+YouTube人工登录窗口使用已安装的正式版Chrome直接启动，不由Playwright控制，也不启用调试接口。专用配置与日常Chrome隔离；完成后关闭专用窗口，后台仅读取该专用配置的Cookie。系统可能要求授权访问Chrome加密凭据；登录成功仍不保证YouTube允许下载。
+
 ## 仅收到本文档：完整源码
 
 AI Agent 可按 FILE 标记逐个提取文件，再核对文件校验.json；运行 `bash install.sh`。仅提取这里列出的公开源码，不迁移他人的登录资料。
@@ -2083,12 +2085,9 @@ def prepare(args):
                         if needs_verification(error):
                             cookies=verify(download_url(args.url),job,meta,save_json)
                             meta['state']='downloading';meta.pop('error',None);save_json(job/'job.json',meta)
-                            retry_options=dict(options);retry_options.pop('cookiesfrombrowser',None);retry_options['cookiefile']=str(cookies)
-                            try:
-                                with YoutubeDL(retry_options) as verified_downloader:
-                                    info=verified_downloader.extract_info(download_url(args.url),download=True)
-                            finally:
-                                cookies.unlink(missing_ok=True)
+                            retry_options=dict(options);retry_options['cookiesfrombrowser']=('chrome',str(cookies.resolve()))
+                            with YoutubeDL(retry_options) as verified_downloader:
+                                info=verified_downloader.extract_info(download_url(args.url),download=True)
                         elif 'No video formats found' in str(error) and 'bilibili.com' in args.url:
                             raise ValueError('B站未提供可下载的音视频地址，可能需要B站访问验证或登录；尚未上传千问。重复重试不一定有效，可使用本地文件入口。') from error
                         else:raise
@@ -3714,6 +3713,19 @@ class VerificationTests(unittest.TestCase):
  def test_youtube_challenge(self):self.assertTrue(needs_verification("ERROR: [youtube] abc: Sign in to confirm you’re not a bot"))
  def test_other_failure_does_not_open_window(self):
   for error in ["HTTP Error 403", "千问未登录", "[youtube] Video unavailable"]:self.assertFalse(needs_verification(error))
+
+ def test_normal_chrome_has_no_automation_connection(self):
+  import tempfile
+  from pathlib import Path
+  from unittest.mock import patch,Mock
+  from youtube_verification import verify
+  with tempfile.TemporaryDirectory() as tmp:
+   job=Path(tmp);cookies=job/'youtube-manual-chrome/Default/Cookies';cookies.parent.mkdir(parents=True);cookies.touch()
+   with patch('youtube_verification.chrome_path',return_value=Path('/chrome')),patch('youtube_verification.subprocess.Popen') as launch:
+    verify('https://www.youtube.com/watch?v=test',job,{},Mock())
+    args=launch.call_args.args[0]
+    self.assertFalse(any('remote-debugging' in arg or 'enable-automation' in arg for arg in args))
+    self.assertTrue(any('youtube-manual-chrome' in arg for arg in args))
 ```
 
 ### FILE: tools/build_guides.py
@@ -3754,46 +3766,35 @@ print(f'Rebuilt guides with {len(files)} public source files.')
 
 ### FILE: youtube_verification.py
 ```text
-"""Human verification in an isolated visible browser; never reads everyday browser cookies."""
-import os,time
+"""Human login in normal installed Chrome, with a dedicated private profile."""
+import os,time,subprocess,sys
 from pathlib import Path
-from http.cookiejar import MozillaCookieJar,Cookie
 
 def needs_verification(message):
     return '[youtube]' in str(message) and 'Sign in to confirm' in str(message)
 
+def chrome_path():
+    candidates=[Path('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'),Path.home()/'Applications/Google Chrome.app/Contents/MacOS/Google Chrome']
+    if sys.platform=='win32':
+        candidates=[Path(os.environ.get(k,''))/'Google/Chrome/Application/chrome.exe' for k in ('PROGRAMFILES','PROGRAMFILES(X86)','LOCALAPPDATA')]
+    for path in candidates:
+        if path.is_file():return path
+    raise RuntimeError('未找到正式版Google Chrome，请安装后再重试YouTube验证')
+
 def verify(url,job,meta,save,timeout=900):
-    from playwright.sync_api import sync_playwright
-    os.environ.setdefault('PLAYWRIGHT_BROWSERS_PATH',str(Path(__file__).resolve().parent/'work/browser-bin'))
-    cookiefile=job/'youtube-session.cookies'
-    meta.update(state='youtube_verifying',error='请在弹出的YouTube专用窗口登录或完成人机验证，完成后关闭该窗口；工具将自动重试下载。')
+    # A separate profile: never launches or reads the user's everyday Chrome profile.
+    profile=job/'youtube-manual-chrome'
+    profile.mkdir(parents=True,exist_ok=True)
+    meta.update(state='youtube_verifying',error='请在弹出的Chrome专用窗口完成YouTube登录或验证，然后关闭该专用窗口；工具自动重试下载。')
     save(job/'job.json',meta)
+    process=subprocess.Popen([str(chrome_path()),'--user-data-dir='+str(profile.resolve()),'--no-first-run','--no-default-browser-check','--disable-background-mode','--new-window',url],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
     try:
-        with sync_playwright() as p:
-            context=p.chromium.launch_persistent_context(str(job/'youtube-browser-profile'),headless=False)
-            try:
-                page=context.pages[0] if context.pages else context.new_page()
-                page.goto(url,wait_until='domcontentloaded',timeout=60000)
-                deadline=time.monotonic()+timeout
-                jar=MozillaCookieJar(str(cookiefile))
-                while context.pages:
-                    if time.monotonic()>deadline:raise RuntimeError('YouTube人工验证等待超过15分钟，请重试后完成验证')
-                    try:
-                        for c in context.cookies():
-                            if not any((c['domain'].lstrip('.')==d or c['domain'].lstrip('.').endswith('.'+d)) for d in ('youtube.com','google.com')):continue
-                            expires=int(c['expires']) if c.get('expires',-1)>0 else None
-                            jar.set_cookie(Cookie(0,c['name'],c['value'],None,False,c['domain'],True,c['domain'].startswith('.'),c['path'],True,c['secure'],expires,expires is None,None,None,{},False))
-                        jar.save(ignore_discard=True,ignore_expires=True);cookiefile.chmod(0o600)
-                        context.pages[-1].wait_for_timeout(1000)
-                    except Exception:
-                        if not context.pages:break
-                        raise
-                if not cookiefile.exists():raise RuntimeError('未获得YouTube验证会话，请重新打开验证窗口')
-                return cookiefile
-            finally:
-                context.close()
-    except Exception as error:
-        raise RuntimeError('YouTube验证窗口未能完成：'+str(error)) from error
+        process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError('YouTube验证窗口仍未关闭；请完成登录并关闭专用窗口后重试。') from error
+    if not (profile/'Default'/'Network'/'Cookies').is_file() and not (profile/'Default'/'Cookies').is_file():
+        raise RuntimeError('Chrome未保存验证会话，请在专用窗口完成登录后再重试')
+    return profile
 ```
 
 ### FILE: 修复浏览器占用并加载更新.command
@@ -3977,7 +3978,7 @@ exit $result
   "install.sh": "abead2c9d17bc14579905cab745be4220776c7d954a96042028c7b4855164826",
   "launch_service.py": "2cadb70ee153b678af24a6eb9e911d7e6e2ae4906ca8d3115ff8bb723d516dba",
   "qianwen_browser.py": "9ec0997fe8d21e15c169dd534c6b1686bcdbd4281497aa6a8ac3ad3b1d91e109",
-  "reader.py": "5c6aaaf88b1454db94bbd352f5dd736bf17c432af91fcbfa4a823e27cf633f22",
+  "reader.py": "f9dad8cc4abb0173d5f9d56c01b4d90a787a49b83c216cae86f42ada2bc53fdd",
   "requirements.txt": "ca2ed115c7d5ef1c7d63e54519aa39795e35d48d74ac5e8b7be278ccc8e7f083",
   "runtime_compat.py": "88356cfde1ee32b4a9100f48ee374ed7e5ac0ba558f6a8626dde430c10b1191f",
   "runtime_status.py": "53e0df100829fd59b385b1fbdddb8bb0da17ff0a5ba88d91c2fb4b29ba2d5c3a",
@@ -3998,9 +3999,9 @@ exit $result
   "test_runtime_status.py": "4b255845c0a0fdb89f76f0fbd04d43d0162c35428ebef9ff3724470abbe6baca",
   "test_task_controls.py": "4c7ef80bd87e091c6140d660cacd406f932048ba89809b4a9236e1b327d3b9b5",
   "test_task_numbering.py": "0c1223029045edc6ff1210b2376505722b4e30f62ba4ab33c7d340042925afc8",
-  "test_youtube_verification.py": "e59cf4997a71b446f26d465080203dbdb71c4ebe1bb540237685d5bd748fb776",
+  "test_youtube_verification.py": "6d94837c22e56f74cdaf666b28f4bc550aaa3df93dd41049937d1b29cb20a225",
   "tools/build_guides.py": "bab736160e519602158394a37bc7fda1d6093336692664de320ae4da03f2e296",
-  "youtube_verification.py": "15565a36fa8ba520d184e0591327b56a7554f5827b9953a4d321816d73fd69ff",
+  "youtube_verification.py": "9339d88a9fa85965d909045309c16599da841423df8ecf9c8257f788951332c9",
   "修复浏览器占用并加载更新.command": "518dadc5853e369bd88d24645d55c42ef7af42595edd8f88defe62c3bb5a32d6",
   "停用自动启动.command": "0c2353cd41fd56b737864d09d6fe83f8b7d62cc1c51757e86fe0bc6bbd76b682",
   "切换千问并清理本地模型.command": "39ae5c718d5854f9fec85e13cd2c6fc683cb3c07844dffdd29697f97cfeeaaf4",

@@ -149,12 +149,9 @@ def prepare(args):
                         if needs_verification(error):
                             cookies=verify(download_url(args.url),job,meta,save_json)
                             meta['state']='downloading';meta.pop('error',None);save_json(job/'job.json',meta)
-                            retry_options=dict(options);retry_options.pop('cookiesfrombrowser',None);retry_options['cookiefile']=str(cookies)
-                            try:
-                                with YoutubeDL(retry_options) as verified_downloader:
-                                    info=verified_downloader.extract_info(download_url(args.url),download=True)
-                            finally:
-                                cookies.unlink(missing_ok=True)
+                            retry_options=dict(options);retry_options['cookiesfrombrowser']=('chrome',str(cookies.resolve()))
+                            with YoutubeDL(retry_options) as verified_downloader:
+                                info=verified_downloader.extract_info(download_url(args.url),download=True)
                         elif 'No video formats found' in str(error) and 'bilibili.com' in args.url:
                             raise ValueError('B站未提供可下载的音视频地址，可能需要B站访问验证或登录；尚未上传千问。重复重试不一定有效，可使用本地文件入口。') from error
                         else:raise
